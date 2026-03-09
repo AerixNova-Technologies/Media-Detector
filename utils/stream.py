@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 import logging
+import threading
 
 import cv2
 import numpy as np
@@ -44,7 +45,6 @@ class VideoStream:
 
         self._cap: cv2.VideoCapture | None = None
         
-        import threading
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread = None
