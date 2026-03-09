@@ -568,11 +568,12 @@ def video_feed():
 if __name__ == "__main__":
     import atexit
     import os
+    from waitress import serve
     
     atexit.register(cam_mgr.stop_all)
     
     # Get port from environment variable (Useful for Railway)
     port = int(os.environ.get("PORT", 5000))
     
-    log.info(f"Starting AI CCTV Web UI on http://0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
+    log.info(f"Starting AI CCTV Web UI on http://0.0.0.0:{port} using Waitress")
+    serve(app, host="0.0.0.0", port=port)

@@ -30,17 +30,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Set cache directories for large models out of the root directory
 ENV DEEPFACE_HOME=/app/.cache
 ENV TORCH_HOME=/app/.cache
-ENV YOLOV8_HOME=/app/.cache
+ENV YOLO_CONFIG_DIR=/app/.cache
 
 # Copy the rest of the application code
 COPY . .
 
+# Install Waitress for production serving mode (instead of Flask Dev Server)
+RUN pip install --no-cache-dir waitress
+
 # Expose port 5000 for the Flask app
 EXPOSE 5000
 
-# Railway will provide a PORT environment variable, Flask needs to listen to it or we just force it to 5000
-# and map Railway to 5000. In app.py it binds to 0.0.0.0:5000, which is perfect for Railway if we set PORT=5000.
 ENV PORT=5000
 
-# Start the Flask interface
+# Start the application using Waitress natively through the python script
 CMD ["python", "app.py"]
