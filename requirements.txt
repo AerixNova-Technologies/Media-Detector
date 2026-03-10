@@ -27,3 +27,6 @@ filterpy>=1.4.5
 scikit-learn>=1.3.0
 Pillow>=10.0.0
 waitress>=3.0.0
+
+# Database
+# Using SQLite3 (built-in)

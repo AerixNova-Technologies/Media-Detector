@@ -1,0 +1,694 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .settings-layout {
+    padding: 40px;
+    width: 100%;
+    min-height: 100%;
+  }
+
+  .settings-card {
+    background: var(--card-bg, rgba(13, 19, 33, 0.4));
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    min-height: calc(100vh - 180px);
+  }
+
+  .settings-tabs {
+    display: flex;
+    gap: 15px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 25px;
+    padding-bottom: 5px;
+  }
+
+  .settings-tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+  }
+
+  .settings-tab:hover {
+    color: var(--text);
+  }
+
+  .settings-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .settings-content-pane {
+    display: none;
+  }
+
+  .settings-content-pane.active {
+    display: block;
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .settings-row label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .settings-row input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 15px;
+    color: var(--text);
+    font-size: 15px;
+    transition: all 0.2s;
+  }
+
+  .settings-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  }
+
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .upload-area:hover {
+    border-color: var(--accent);
+    background: rgba(139, 92, 246, 0.05);
+  }
+
+  .upload-icon {
+    font-size: 32px;
+    margin-bottom: 15px;
+    color: var(--accent);
+  }
+
+  .upload-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 25px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 10px;
+  }
+
+  .upload-btn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-2px);
+  }
+
+  .upload-btn:disabled {
+    background: var(--muted);
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    display: none;
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+  }
+
+  .modal-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    border-radius: 20px;
+    padding: 30px;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 24px;
+    cursor: pointer;
+  }
+
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 15px;
+    margin-top: 25px;
+  }
+
+  .gallery-item {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+  }
+
+  .gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .gallery-item .del-btn {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background: var(--red);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .gallery-item:hover .del-btn {
+    opacity: 1;
+  }
+</style>
+
+<div id="view-settings" class="settings-layout" style="display:block;">
+  <div class="settings-card" style="max-width: 100%;">
+
+    <div class="settings-tabs">
+      <div class="settings-tab active" onclick="switchSettingsTab('profile')">My Profile</div>
+      <div class="settings-tab" onclick="switchSettingsTab('upload')">Upload Image</div>
+      <div class="settings-tab" onclick="switchSettingsTab('local-cam')">Local Cameras</div>
+      <div class="settings-tab" onclick="switchSettingsTab('global')">Global Settings</div>
+    </div>
+
+    <!-- 1. Profile Tab -->
+    <div id="tab-profile" class="settings-content-pane active">
+      <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 8px; color: var(--text);">Account Profile</h3>
+        <p style="font-size: 13px; color: var(--muted);">View your system identity and company information.</p>
+      </div>
+
+      <div class="settings-row">
+        <label>Full Name</label>
+        <input type="text" id="profile-name" readonly style="background: rgba(255,255,255,0.05);" />
+      </div>
+      <div class="settings-row" style="margin-top: 20px;">
+        <label>Email Address</label>
+        <input type="text" id="profile-email" readonly style="background: rgba(255,255,255,0.05);" />
+      </div>
+      <div class="settings-row" style="margin-top: 20px;">
+        <label>Company / Organization</label>
+        <input type="text" id="profile-company" readonly style="background: rgba(255,255,255,0.05);" />
+      </div>
+    </div>
+
+    <!-- 2. Upload Tab -->
+    <div id="tab-upload" class="settings-content-pane">
+      <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 8px; color: var(--text);">Staff Photo Upload</h3>
+        <p style="font-size: 13px; color: var(--muted);">Add new staff members by providing their name and 5-10
+          reference photos.</p>
+      </div>
+
+      <div class="settings-row">
+        <label>Staff Name</label>
+        <input type="text" id="staff-name-input" placeholder="e.g. John Doe" />
+      </div>
+
+      <div class="settings-row" style="margin-top: 20px;">
+        <label>Select Photos (Multiple)</label>
+        <div class="upload-area" onclick="document.getElementById('file-upload').click()">
+          <div class="upload-icon">📸</div>
+          <p style="font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px;">Click to select photos
+          </p>
+          <p style="font-size: 12px; color: var(--muted);">Supported formats: JPG, PNG (5-10 images recommended)</p>
+          <input type="file" id="file-upload" multiple accept="image/png, image/jpeg" style="display:none;"
+            onchange="handleFileSelect(event)">
+        </div>
+      </div>
+
+      <div id="selected-files-preview"
+        style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; margin-bottom: 20px;">
+      </div>
+
+      <button class="upload-btn" id="submit-upload-btn" onclick="uploadStaffPhotos()">Upload Staff Profile</button>
+      <div id="upload-status" style="margin-top: 15px; font-size: 13px; font-weight: 500;"></div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 30px 0;">
+
+      <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 8px; color: var(--text);">Saved Staff Profiles</h3>
+        <button class="upload-btn" onclick="loadSavedStaff()" style="margin-top:0; padding: 6px 12px;">Refresh
+          List</button>
+      </div>
+      <div id="saved-staff-gallery"
+        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
+        <!-- Staff profiles will populate here -->
+      </div>
+    </div>
+
+    <!-- 3. Local Cameras Tab -->
+    <div id="tab-local-cam" class="settings-content-pane">
+      <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 8px; color: var(--text);">Manage Local IP Cameras</h3>
+        <p style="font-size: 13px; color: var(--muted);">Add RTSP cameras (Hikvision, CP Plus, etc.) from your local
+          network.</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <!-- Add Camera Form -->
+        <div style="background: var(--surface); padding: 20px; border-radius: 10px; border: 1px solid var(--border);">
+          <h4 style="margin-bottom: 15px; color: var(--accent);">Add New Camera</h4>
+          <div class="settings-row">
+            <label>Camera Name</label>
+            <input type="text" id="lcam-name" placeholder="Front Door" />
+          </div>
+          <div class="settings-row" style="margin-top: 15px;">
+            <label>Brand</label>
+            <select id="lcam-brand"
+              style="width:100%; padding:10px; background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px;">
+              <option value="Generic">Generic / Other</option>
+              <option value="Hikvision">Hikvision</option>
+              <option value="CP Plus">CP Plus</option>
+              <option value="Dahua">Dahua</option>
+              <option value="Aeriqs">Aeriqs</option>
+            </select>
+          </div>
+          <div class="settings-row" style="margin-top: 15px;">
+            <label>IP Address</label>
+            <input type="text" id="lcam-ip" placeholder="192.168.1.100" />
+          </div>
+          <div class="settings-row" style="margin-top: 15px;">
+            <label>Port (RTSP)</label>
+            <input type="number" id="lcam-port" value="554" />
+          </div>
+          <div class="settings-row" style="margin-top: 15px;">
+            <label>Username</label>
+            <input type="text" id="lcam-user" placeholder="admin" />
+          </div>
+          <div class="settings-row" style="margin-top: 15px;">
+            <label>Password</label>
+            <input type="password" id="lcam-pass" placeholder="••••••••" />
+          </div>
+          <div class="settings-row" style="margin-top: 15px;">
+            <label>Stream Path</label>
+            <input type="text" id="lcam-path" placeholder="/Streaming/Channels/101" />
+          </div>
+          <button class="upload-btn" style="width:100%; margin-top:20px;" onclick="addLocalCamera()">Add Camera</button>
+        </div>
+
+        <!-- Saved Cameras List -->
+        <div>
+          <h4 style="margin-bottom: 15px; color: var(--text);">Saved Local Cameras</h4>
+          <div id="local-cam-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Loaded via JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Global Settings Tab -->
+    <div id="tab-global" class="settings-content-pane">
+      <div class="settings-row">
+        <label>Imou App ID</label>
+        <input type="text" id="setting-appid" placeholder="e.g. lcfdd4..." readonly />
+      </div>
+      <div class="settings-row">
+        <label>Telegram App Token</label>
+        <input type="text" id="setting-tg-token" placeholder="Bot Token..." readonly />
+      </div>
+      <div class="settings-row">
+        <label>Telegram Receivers (Chat IDs)</label>
+        <input type="text" id="setting-tg-chats" placeholder="Comma separated IDs..." readonly />
+      </div>
+      <p style="font-size: 12px; color: var(--muted); margin-top: 20px;">
+        *Note: To modify these settings securely, please edit the <code>.env</code> file directly on the server to
+        avoid exposing secrets over the web UI.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="staff-modal">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeStaffModal()">×</button>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h2 id="modal-staff-name" style="color: var(--text);">Staff Name</h2>
+      <button class="upload-btn"
+        style="margin-top:0; border-color: var(--red); color: var(--red); background: rgba(239, 68, 68, 0.1);"
+        onclick="deleteStaffProfile()">Delete Profile</button>
+    </div>
+    <div id="modal-gallery" class="gallery-grid">
+      <!-- Photos load here -->
+    </div>
+  </div>
+</div>
+
+<script>
+  let selectedFiles = [];
+
+  function switchSettingsTab(tabId) {
+    document.querySelectorAll('.settings-tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.settings-content-pane').forEach(el => el.classList.remove('active'));
+
+    event.currentTarget.classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+
+    if (tabId === 'upload') {
+      loadSavedStaff();
+    } else if (tabId === 'profile') {
+      loadUserProfile();
+    } else if (tabId === 'local-cam') {
+      loadLocalCameras();
+    }
+  }
+
+  async function loadLocalCameras() {
+    const list = document.getElementById('local-cam-list');
+    list.innerHTML = '<p style="color:var(--muted); font-size:12px;">Loading cameras...</p>';
+    try {
+      const res = await fetch('/api/local_cameras');
+      const data = await res.json();
+      if (!data.length) {
+        list.innerHTML = '<p style="color:var(--muted); font-size:13px; background:var(--surface); padding:15px; border-radius:8px; border:1px dashed var(--border);">No local cameras added yet.</p>';
+        return;
+      }
+      list.innerHTML = data.map(c => `
+        <div style="background:var(--surface); padding:12px; border-radius:8px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600; color:var(--text);">${c.name}</div>
+            <div style="font-size:11px; color:var(--muted);">${c.brand} • ${c.ip}</div>
+          </div>
+          <button onclick="deleteLocalCamera(${c.id})" style="background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; font-weight:bold; padding:5px;">Remove</button>
+        </div>
+      `).join('');
+    } catch (e) { list.innerHTML = 'Error loading list'; }
+  }
+
+  async function addLocalCamera() {
+    const payload = {
+      name: document.getElementById('lcam-name').value,
+      brand: document.getElementById('lcam-brand').value,
+      ip: document.getElementById('lcam-ip').value,
+      port: parseInt(document.getElementById('lcam-port').value),
+      username: document.getElementById('lcam-user').value,
+      password: document.getElementById('lcam-pass').value,
+      path: document.getElementById('lcam-path').value
+    };
+
+    if (!payload.name || !payload.ip) {
+      alert("Name and IP are required.");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/local_cameras', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadLocalCameras();
+        // Clear form
+        document.getElementById('lcam-name').value = "";
+        document.getElementById('lcam-ip').value = "";
+        document.getElementById('lcam-user').value = "";
+        document.getElementById('lcam-pass').value = "";
+        document.getElementById('lcam-path').value = "";
+      } else {
+        alert("Failed to add: " + data.error);
+      }
+    } catch (e) { alert("Network error"); }
+  }
+
+  async function deleteLocalCamera(id) {
+    if (!confirm("Are you sure?")) return;
+    try {
+      const res = await fetch('/api/local_cameras/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) loadLocalCameras();
+    } catch (e) { alert("Error deleting"); }
+  }
+
+  async function loadUserProfile() {
+    try {
+      document.getElementById('profile-name').value = "Loading...";
+      document.getElementById('profile-email').value = "Loading...";
+      document.getElementById('profile-company').value = "Loading...";
+
+      const res = await fetch('/api/user_profile');
+      const data = await res.json();
+
+      if (!data.error) {
+        document.getElementById('profile-name').value = data.name || "";
+        document.getElementById('profile-email').value = data.email || "";
+        document.getElementById('profile-company').value = data.company || "";
+      } else {
+        document.getElementById('profile-name').value = data.error;
+        document.getElementById('profile-email').value = "";
+        document.getElementById('profile-company').value = "";
+      }
+    } catch (e) {
+      document.getElementById('profile-name').value = "Error fetching profile";
+    }
+  }
+
+  function handleFileSelect(event) {
+    selectedFiles = Array.from(event.target.files);
+    const previewContainer = document.getElementById('selected-files-preview');
+    previewContainer.innerHTML = '';
+
+    selectedFiles.forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const imgDiv = document.createElement('div');
+        imgDiv.style = "position:relative; width:60px; height:60px; border-radius:8px; overflow:hidden; border:1px solid var(--border);";
+        imgDiv.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+        previewContainer.appendChild(imgDiv);
+      }
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadStaffPhotos() {
+    const nameInput = document.getElementById('staff-name-input').value.trim();
+    const statusEl = document.getElementById('upload-status');
+
+    if (!nameInput) {
+      statusEl.style.color = "var(--red)";
+      statusEl.innerText = "❌ Please provide a staff name.";
+      return;
+    }
+    if (selectedFiles.length === 0) {
+      statusEl.style.color = "var(--red)";
+      statusEl.innerText = "❌ Please select at least 1 photo.";
+      return;
+    }
+
+    statusEl.style.color = "var(--accent)";
+    statusEl.innerText = "⏳ Uploading " + selectedFiles.length + " photos...";
+    document.getElementById('submit-upload-btn').disabled = true;
+
+    const formData = new FormData();
+    formData.append('staff_name', nameInput);
+    selectedFiles.forEach(file => {
+      formData.append('photos', file);
+    });
+
+    try {
+      const res = await fetch('/api/upload_staff', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        statusEl.style.color = "var(--green)";
+        statusEl.innerText = "✅ Successfully uploaded profile for " + nameInput;
+        document.getElementById('staff-name-input').value = '';
+        selectedFiles = [];
+        document.getElementById('selected-files-preview').innerHTML = '';
+        setTimeout(loadSavedStaff, 1000);
+      } else {
+        statusEl.style.color = "var(--red)";
+        statusEl.innerText = "❌ " + data.error;
+      }
+    } catch (err) {
+      statusEl.style.color = "var(--red)";
+      statusEl.innerText = "❌ Network error during upload.";
+    }
+
+    document.getElementById('submit-upload-btn').disabled = false;
+  }
+
+  async function loadSavedStaff() {
+    const gallery = document.getElementById('saved-staff-gallery');
+    gallery.innerHTML = '<span style="color:var(--muted); font-size:12px;">Loading profiles...</span>';
+
+    try {
+      const res = await fetch('/api/staff_profiles');
+      const data = await res.json();
+
+      if (!data.profiles || data.profiles.length === 0) {
+        gallery.innerHTML = '<span style="color:var(--muted); font-size:12px;">No staff profiles saved yet.</span>';
+        return;
+      }
+
+      gallery.innerHTML = data.profiles.map(profile => {
+        return `
+          <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; text-align:center; cursor:pointer;" onclick="openStaffModal('${profile.name}')">
+            <div style="width:80px; height:80px; margin:0 auto 10px; border-radius:50%; overflow:hidden; border:2px solid var(--accent); opacity:0.8;">
+              <img src="${profile.thumbnail}" style="width:100%; height:100%; object-fit:cover;">
+            </div>
+            <div style="font-size:14px; font-weight:600; color:var(--text);">${profile.name}</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">${profile.photo_count} Photos</div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      gallery.innerHTML = '<span style="color:var(--red); font-size:12px;">Failed to load profiles.</span>';
+    }
+  }
+
+  let currentModalStaff = "";
+
+  async function openStaffModal(staffName) {
+    currentModalStaff = staffName;
+    document.getElementById('modal-staff-name').innerText = staffName;
+    const modal = document.getElementById('staff-modal');
+    modal.classList.add('active');
+
+    await refreshModalGallery();
+  }
+
+  function closeStaffModal() {
+    document.getElementById('staff-modal').classList.remove('active');
+    currentModalStaff = "";
+  }
+
+  async function refreshModalGallery() {
+    if (!currentModalStaff) return;
+    const gallery = document.getElementById('modal-gallery');
+    gallery.innerHTML = '<span style="color:var(--muted); font-size:12px;">Loading photos...</span>';
+
+    try {
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaff));
+      const data = await res.json();
+
+      if (data.error) {
+        gallery.innerHTML = '<span style="color:var(--red); font-size:12px;">' + data.error + '</span>';
+        return;
+      }
+
+      gallery.innerHTML = data.photos.map(p => {
+        return `
+          <div class="gallery-item">
+            <img src="${p.url}">
+            <button class="del-btn" onclick="deleteStaffPhoto('${p.filename}')">Delete</button>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      gallery.innerHTML = '<span style="color:var(--red); font-size:12px;">Failed to load photos.</span>';
+    }
+  }
+
+  async function deleteStaffPhoto(filename) {
+    if (!confirm('Are you sure you want to delete this photo?')) return;
+    try {
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaff) + '/' + encodeURIComponent(filename), {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        await refreshModalGallery();
+        loadSavedStaff(); // refresh background list
+      } else {
+        alert("Delete failed: " + data.error);
+      }
+    } catch (err) {
+      alert("Network error.");
+    }
+  }
+
+  async function deleteStaffProfile() {
+    if (!confirm('Are you sure you want to completely delete this profile and all its photos?')) return;
+    try {
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaff), {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        closeStaffModal();
+        loadSavedStaff();
+      } else {
+        alert("Delete failed: " + data.error);
+      }
+    } catch (err) {
+      alert("Network error.");
+    }
+  }
+
+  // Fetch initial profile data since it's the default active tab
+  document.addEventListener("DOMContentLoaded", () => {
+    loadUserProfile();
+  });
+</script>
+
+{% endblock %}

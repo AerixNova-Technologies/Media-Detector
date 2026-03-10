@@ -16,12 +16,16 @@ import logging
 import queue
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, Future
-from dataclasses import dataclass, field
-
+import json
+import os
 import cv2
 import numpy as np
-from flask import Flask, Response, jsonify, render_template, request
+import werkzeug.security
+from concurrent.futures import ThreadPoolExecutor, Future
+from dataclasses import dataclass, field
+from werkzeug.utils import secure_filename
+from functools import wraps
+from flask import Flask, Response, jsonify, render_template, request, session, redirect, url_for
 
 import config as cfg
 from modules.motion_detection import MotionDetector
@@ -30,10 +34,12 @@ from modules.tracking import PersonTracker
 from modules.face_detection import FaceDetector
 from modules.emotion_detection import EmotionDetector
 from modules.action_detection import ActionDetector
+from modules.face_recognition import FaceRecognizer
 from utils.stream import VideoStream
 from utils.drawing import draw_person, draw_face, draw_status_bar
 from utils.fps_counter import FPSCounter
-from imou_connector import ImouAPI, _find_working_datacenter, _get_device_status
+from modules.imou_connector import ImouAPI, _find_working_datacenter, _get_device_status
+from modules.notifier import TelegramNotifier
 
 # ─── Imou credentials ────────────────────────────────────────────────────────
 import os
@@ -57,7 +63,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("app")
+notifier = TelegramNotifier()
 
+total_motion_events = 0
 
 # ─── Data classes ─────────────────────────────────────────────────────────────
 
@@ -75,6 +83,7 @@ class TrackResult:
     face_bbox_full: list[float] | None
     emotion:       str
     action:        str
+    identity:      str = ""
 
 
 @dataclass
@@ -136,12 +145,25 @@ class AIPipeline(threading.Thread):
             device=cfg.ACTION_DEVICE,
         )
 
+        # Facial Recognition
+        # We assume UPLOAD_FOLDER is globally available
+        self.face_rec = FaceRecognizer(
+            db_path=UPLOAD_FOLDER,
+            skip_frames=15, 
+            backend=cfg.EMOTION_BACKEND, # Reuse backend settings
+        )
+        self._rec_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rec")
+        self._rec_futures: dict[int, Future] = {}
+        self._notified_identities: set[int] = set()
+
         self._frame_idx            = 0
         self._last_detections: list = []
         self._last_objects: dict    = {"food": [], "phone": []}
         self._last_motion_time     = time.monotonic()
         self._full_w: int          = cfg.FRAME_WIDTH
         self._full_h: int          = cfg.FRAME_HEIGHT
+        self.camera_name: str      = "Camera"
+        self.notifier             = TelegramNotifier()
 
     def stop(self):
         self._stop_evt.set()
@@ -160,6 +182,7 @@ class AIPipeline(threading.Thread):
             with self.result_lock:
                 self.result_store[0] = result
         self._emotion_executor.shutdown(wait=False)
+        self._rec_executor.shutdown(wait=False)
         log.info("AI pipeline stopped.")
 
     def _submit_emotion(self, crop: np.ndarray, tid: int):
@@ -168,6 +191,14 @@ class AIPipeline(threading.Thread):
             return
         self._emotion_futures[tid] = self._emotion_executor.submit(
             self.emotion_det.analyse, crop.copy(), tid
+        )
+
+    def _submit_rec(self, crop: np.ndarray, tid: int):
+        fut = self._rec_futures.get(tid)
+        if fut is not None and not fut.done():
+            return
+        self._rec_futures[tid] = self._rec_executor.submit(
+            self.face_rec.recognize, crop.copy(), tid
         )
 
     def _process(self, ai_frame: np.ndarray, full_w: int, full_h: int) -> AIResult:
@@ -179,6 +210,9 @@ class AIPipeline(threading.Thread):
         motion, mask = self.motion_det.detect(ai_frame)
         now = time.monotonic()
         if motion:
+            if (now - self._last_motion_time) > cfg.MOTION_COOLDOWN_SEC:
+                global total_motion_events
+                total_motion_events += 1
             self._last_motion_time = now
 
         in_cooldown = (now - self._last_motion_time) < cfg.MOTION_COOLDOWN_SEC
@@ -244,19 +278,42 @@ class AIPipeline(threading.Thread):
                     self._submit_emotion(person_crop, tid)
                 emotion = self.emotion_det._cache.get(tid, "")
 
+            identity_name = ""
+            if AI_TOGGLES["person"]:
+                person_crop = ai_frame[by1:by2, bx1:bx2]
+                if person_crop.size > 0:
+                    self._submit_rec(person_crop, tid)
+                identity_name = self.face_rec._cache.get(tid, "")
+                
+                if identity_name and identity_name != "Unknown" and tid not in self._notified_identities:
+                    self.notifier.send_message(f"✅ *MATCH DETECTED*: Staff member **{identity_name}** recognized on {self.camera_name}.")
+                    self._notified_identities.add(tid)
+
             track_results.append(TrackResult(
                 track_id=tid,
                 bbox_full=_scale_box(bbox, sx, sy),
                 face_bbox_full=face_bbox_full,
                 emotion=emotion, action=action,
+                identity=identity_name,
             ))
+            
+            # Send Telegram notification for new detections
+            if AI_TOGGLES["person"]:
+                self.notifier.notify_person(tid, self.camera_name, action)
 
         if self._frame_idx % 120 == 0:
             self.emotion_det.purge(active_ids)
             self.action_det.purge(active_ids)
+            self.face_rec.purge(active_ids)
             for tid in list(self._emotion_futures):
                 if tid not in active_ids:
                     del self._emotion_futures[tid]
+            for tid in list(self._rec_futures):
+                if tid not in active_ids:
+                    del self._rec_futures[tid]
+            for tid in list(self._notified_identities):
+                if tid not in active_ids:
+                    self._notified_identities.remove(tid)
 
         return AIResult(motion=motion, motion_mask=mask, tracks=track_results)
 
@@ -303,6 +360,8 @@ class CameraManager:
 
         log.info("Starting camera: %s  source=%s", name, source)
         self.camera_name      = name
+        if self._pipeline:
+            self._pipeline.camera_name = name
         self._active          = True
         self._render_stop_evt = threading.Event()
         self.stream_id       += 1            # frontend detects the change
@@ -392,7 +451,7 @@ class CameraManager:
 
                 for tr in tracks:
                     draw_person(frame, tr.bbox_full, tr.track_id,
-                                emotion=tr.emotion, action=tr.action)
+                                emotion=tr.emotion, action=tr.action, identity=tr.identity)
                     if tr.face_bbox_full:
                         draw_face(frame, tr.face_bbox_full, tr.track_id)
 
@@ -432,7 +491,8 @@ class CameraManager:
             "tracks": [
                 {"id": t.track_id,
                  "emotion": t.emotion or "–",
-                 "action":  t.action  or "–"}
+                 "action":  t.action  or "–",
+                 "identity": t.identity or ""}
                 for t in tracks
             ],
         }
@@ -474,32 +534,175 @@ _camera_cache: list[dict] = []
 _camera_cache_ts: float   = 0.0
 _camera_lock = threading.Lock()
 
-def get_all_cameras(force=False):
+def get_all_cameras(force=False, user_email=None):
     global _camera_cache, _camera_cache_ts
+    
     with _camera_lock:
-        if not force and (time.time() - _camera_cache_ts) < 60 and _camera_cache:
-            return _camera_cache
-        cameras = [{"id": "webcam", "name": "Webcam (Built-in)", "status": "🟢 Online", "type": "webcam"}]
-        cameras.extend(_fetch_imou_cameras())
-        _camera_cache    = cameras
-        _camera_cache_ts = time.time()
-        return cameras
+        if force or (time.time() - _camera_cache_ts) >= 60 or not _camera_cache:
+            base_cams = [{"id": "webcam", "name": "Webcam (Built-in)", "status": "🟢 Online", "type": "webcam"}]
+            base_cams.extend(_fetch_imou_cameras())
+            _camera_cache = base_cams
+            _camera_cache_ts = time.time()
+        
+        cameras = list(_camera_cache)
+        
+    if user_email:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id, name, brand, ip_address FROM local_cameras WHERE owner_email = %s", (user_email,))
+            local_cams = cur.fetchall()
+            cur.close()
+            conn.close()
+            for row in local_cams:
+                cameras.append({
+                    "id": f"local_{row['id']}",
+                    "name": row['name'],
+                    "status": "🟢 Online", # Assume local IP cameras are online by default unless pinged
+                    "type": "local",
+                    "brand": row['brand'],
+                    "ip": row['ip_address']
+                })
+        except Exception as e:
+            log.error(f"Error fetching local cameras: {e}")
+
+    return cameras
 
 
 # ─── Flask app ────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+app.secret_key = "super_secret_mission_control_key_xyz"
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+def get_db_connection():
+    db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/cctv_logs")
+    return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+
+# ─── Initialize Database ───────────────────────────────────────────────────
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Create users table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            company TEXT NOT NULL,
+            password_hash TEXT NOT NULL
+        )
+    """)
+    # Create local_cameras table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS local_cameras (
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            brand TEXT,
+            ip_address TEXT,
+            port INTEGER,
+            username TEXT,
+            password TEXT,
+            stream_path TEXT,
+            owner_email TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
 cam_mgr = CameraManager()
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return redirect(url_for('route_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route("/login", methods=["GET", "POST"])
+def route_login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT password_hash FROM users WHERE email = %s", (email,))
+        user_record = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if user_record and werkzeug.security.check_password_hash(user_record['password_hash'], password):
+            session['user'] = email
+            return redirect(url_for("index"))
+        return render_template("login.html", error="Invalid credentials")
+    return render_template("login.html")
+
+@app.route("/signup", methods=["GET", "POST"])
+def route_signup():
+    if request.method == "POST":
+        email = request.form.get("email")
+        name = request.form.get("username")
+        company = request.form.get("company")
+        password = request.form.get("password")
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Check if email exists
+        cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return render_template("signup.html", error="Email already registered")
+            
+        # Insert user
+        pw_hash = werkzeug.security.generate_password_hash(password)
+        cur.execute("""
+            INSERT INTO users (email, name, company, password_hash)
+            VALUES (%s, %s, %s, %s)
+        """, (email, name, company, pw_hash))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        session['user'] = email
+        return redirect(url_for("index"))
+    return render_template("signup.html")
+
+@app.route("/logout")
+def route_logout():
+    session.pop('user', None)
+    return redirect(url_for("route_login"))
 
 
 @app.route("/")
+@login_required
 def index():
-    return render_template("index.html")
+    return render_template("dashboard.html")
+
+@app.route("/live")
+@login_required
+def route_live():
+    return render_template("live.html")
+
+@app.route("/settings")
+@login_required
+def route_settings():
+    return render_template("settings.html")
 
 
 @app.route("/api/cameras")
 def api_cameras():
-    cameras = get_all_cameras()
+    user_email = session.get('user')
+    cameras = get_all_cameras(user_email=user_email)
     return jsonify(cameras)
 
 
@@ -507,7 +710,8 @@ def api_cameras():
 def api_select():
     data = request.get_json(force=True)
     cam_id = data.get("id", "webcam")
-    cameras = get_all_cameras()
+    user_email = session.get('user')
+    cameras = get_all_cameras(user_email=user_email)
     cam = next((c for c in cameras if c["id"] == cam_id), None)
     if cam is None:
         return jsonify({"error": "Camera not found"}), 404
@@ -526,8 +730,190 @@ def api_select():
         except Exception as e:
             log.error("Imou start error: %s", e)
             return jsonify({"error": str(e)}), 500
+    elif cam["type"] == "local":
+        try:
+            db_id = cam_id.replace("local_", "")
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT ip_address, port, username, password, stream_path FROM local_cameras WHERE id = %s", (db_id,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if not row:
+                return jsonify({"error": "Local camera record not found"}), 404
+                
+            ip, port, user, pw, path = row['ip_address'], row['port'], row['username'], row['password'], row['stream_path']
+            # Protocol varies but many support rtsp://user:pass@ip:port/path
+            if user and pw:
+                rtsp_url = f"rtsp://{user}:{pw}@{ip}:{port}{path}"
+            else:
+                rtsp_url = f"rtsp://{ip}:{port}{path}"
+                
+            log.info(f"Starting local RTSP: {rtsp_url}")
+            cam_mgr.start(rtsp_url, cam["name"])
+        except Exception as e:
+            log.error(f"Local start error: {e}")
+            return jsonify({"error": str(e)}), 500
 
     return jsonify({"success": True, "camera": cam["name"]})
+
+
+@app.route("/api/local_cameras", methods=["GET", "POST"])
+@login_required
+def api_local_cameras():
+    email = session.get('user')
+    if request.method == "POST":
+        data = request.get_json(force=True)
+        name = data.get('name')
+        brand = data.get('brand', 'Generic')
+        ip = data.get('ip')
+        port = data.get('port', 554)
+        user = data.get('username', '')
+        pw = data.get('password', '')
+        path = data.get('path', '')
+        
+        if not name or not ip:
+            return jsonify({"success": False, "error": "Name and IP are required"}), 400
+            
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO local_cameras (name, brand, ip_address, port, username, password, stream_path, owner_email)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (name, brand, ip, port, user, pw, path, email))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    # GET
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, brand, ip_address, port, username, password, stream_path FROM local_cameras WHERE owner_email = %s", (email,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        cameras = []
+        for r in rows:
+            cameras.append({
+                "id": r['id'], "name": r['name'], "brand": r['brand'], "ip": r['ip_address'],
+                "port": r['port'], "username": r['username'], "password": r['password'], "path": r['stream_path']
+            })
+        return jsonify(cameras)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/local_cameras/<int:cam_id>", methods=["DELETE"])
+@login_required
+def api_delete_local_camera(cam_id):
+    email = session.get('user')
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM local_cameras WHERE id = %s AND owner_email = %s", (cam_id, email))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/upload_staff", methods=["POST"])
+@login_required
+def api_upload_staff():
+    if 'staff_name' not in request.form:
+        return jsonify({"success": False, "error": "Staff name is required"})
+    
+    staff_name = secure_filename(request.form['staff_name'])
+    if not staff_name:
+        return jsonify({"success": False, "error": "Invalid staff name"})
+
+    if 'photos' not in request.files:
+        return jsonify({"success": False, "error": "No files attached"})
+
+    files = request.files.getlist('photos')
+    if len(files) == 0 or (len(files) == 1 and files[0].filename == ''):
+        return jsonify({"success": False, "error": "No valid files selected"})
+
+    staff_dir = os.path.join(app.config['UPLOAD_FOLDER'], staff_name)
+    os.makedirs(staff_dir, exist_ok=True)
+
+    saved_count = 0
+    for file in files:
+        if file and file.filename:
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(staff_dir, filename))
+            saved_count += 1
+
+    return jsonify({"success": True, "saved_count": saved_count})
+
+
+@app.route("/api/staff_profiles", methods=["GET"])
+@login_required
+def api_staff_profiles():
+    profiles = []
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        for staff_name in os.listdir(app.config['UPLOAD_FOLDER']):
+            staff_dir = os.path.join(app.config['UPLOAD_FOLDER'], staff_name)
+            if os.path.isdir(staff_dir):
+                photos = [f for f in os.listdir(staff_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                if photos:
+                    # use the first photo as thumbnail
+                    thumbnail_url = url_for('static', filename=f"uploads/{staff_name}/{photos[0]}")
+                    profiles.append({
+                        "name": staff_name,
+                        "photo_count": len(photos),
+                        "thumbnail": thumbnail_url
+                    })
+    
+    return jsonify({"profiles": profiles})
+
+@app.route("/api/staff_profiles/<staff_name>", methods=["GET"])
+@login_required
+def api_staff_photos(staff_name):
+    staff_name = secure_filename(staff_name)
+    staff_dir = os.path.join(app.config['UPLOAD_FOLDER'], staff_name)
+    if not os.path.isdir(staff_dir):
+        return jsonify({"error": "Staff not found"}), 404
+        
+    photos = [f for f in os.listdir(staff_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    urls = [{"filename": p, "url": url_for('static', filename=f"uploads/{staff_name}/{p}")} for p in photos]
+    return jsonify({"staff": staff_name, "photos": urls})
+
+@app.route("/api/staff_profiles/<staff_name>/<filename>", methods=["DELETE"])
+@login_required
+def api_delete_staff_photo(staff_name, filename):
+    staff_name = secure_filename(staff_name)
+    filename = secure_filename(filename)
+    staff_dir = os.path.join(app.config['UPLOAD_FOLDER'], staff_name)
+    file_path = os.path.join(staff_dir, filename)
+    
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        # If folder is empty, optionally remove it
+        if not os.listdir(staff_dir):
+            os.rmdir(staff_dir)
+        return jsonify({"success": True})
+    return jsonify({"error": "File not found"}), 404
+
+@app.route("/api/staff_profiles/<staff_name>", methods=["DELETE"])
+@login_required
+def api_delete_staff(staff_name):
+    staff_name = secure_filename(staff_name)
+    staff_dir = os.path.join(app.config['UPLOAD_FOLDER'], staff_name)
+    
+    if os.path.isdir(staff_dir):
+        import shutil
+        shutil.rmtree(staff_dir)
+        return jsonify({"success": True})
+    return jsonify({"error": "Staff not found"}), 404
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -557,6 +943,67 @@ def api_toggles():
     return jsonify(AI_TOGGLES)
 
 
+@app.route("/api/notify_manual", methods=["POST"])
+def api_notify_manual():
+    msg = "📢 *MANUAL ALERT* from MISSION CONTROL UI\n\nA user has triggered a manual notification from the control panel."
+    success = notifier.send_message(msg)
+    return jsonify({"success": success})
+
+
+@app.route("/api/dashboard_info")
+def api_dashboard_info():
+    unique_people = 0
+    try:
+        if cam_mgr._pipeline and hasattr(cam_mgr._pipeline, "tracker"):
+            ds = cam_mgr._pipeline.tracker.tracker
+            unique_people = max(0, ds.tracker._next_id - 1)
+    except Exception:
+        pass
+        
+    user_email = session.get('user')
+    cams = get_all_cameras(user_email=user_email)
+    online_count = sum(1 for c in cams if "Online" in c.get("status", ""))
+    offline_count = sum(1 for c in cams if "Offline" in c.get("status", ""))
+    
+    return jsonify({
+        "total_motion_events": total_motion_events,
+        "unique_people": unique_people,
+        "online_cameras": online_count,
+        "offline_cameras": offline_count
+    })
+
+
+@app.route("/api/settings_info")
+def api_settings_info():
+    return jsonify({
+        "app_id": os.environ.get("IMOU_APP_ID", ""),
+        "tg_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+        "tg_chats": os.environ.get("TELEGRAM_CHAT_ID", "")
+    })
+
+@app.route("/api/user_profile")
+@login_required
+def api_user_profile():
+    email = session.get('user')
+    if not email:
+        return jsonify({"error": "Not logged in"}), 401
+        
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT email, name, company FROM users WHERE email = %s", (email,))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if user:
+        return jsonify({
+            "email": user["email"],
+            "name": user["name"],
+            "company": user["company"]
+        })
+    return jsonify({"error": "User not found"}), 404
+
+
 @app.route("/video_feed")
 def video_feed():
     def generate():
@@ -578,5 +1025,7 @@ if __name__ == "__main__":
     # Get port from environment variable (Useful for Railway)
     port = int(os.environ.get("PORT", 5000))
     
-    log.info(f"Starting MACHINE CONTROLLER Web UI on http://localhost:{port}")
-    serve(app, host="0.0.0.0", port=port)
+    log.info(f"Starting MISSION CONTROL Web UI on http://localhost:{port}")
+    # Increased threads to 32 to stop streaming feeds (video_feed) from exhausting worker threads
+    # which caused "Task queue depth is X" warnings.
+    serve(app, host="0.0.0.0", port=port, threads=32)

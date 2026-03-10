@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% set active_page = 'live' %}
+{% block content %}
+<div id="view-live" class="layout">
+
+
+  <!-- Camera List -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      Cameras
+      <button class="refresh-btn" onclick="loadCameras()">↻ Refresh</button>
+    </div>
+    <div class="camera-list" id="camera-list">
+      <div class="loading-cameras">
+        <div class="spinner"></div>
+        Loading cameras...
+      </div>
+    </div>
+  </aside>
+
+  <!-- Video Feed -->
+  <main class="video-area">
+    <div class="stream-wrapper">
+      <div class="video-placeholder" id="placeholder">
+        <div class="big-icon">📡</div>
+        <p>Select a camera from the left panel to begin</p>
+      </div>
+      <img id="stream-img" src="/video_feed" alt="Live Feed" />
+      <div class="camera-label" id="cam-label" style="display:none;"></div>
+      <div class="stream-overlay">
+        <div class="stream-badge live" id="live-badge" style="display:none;">● LIVE</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Stats Panel -->
+  <aside class="stats-panel">
+    <div class="stats-header">Live Analytics</div>
+    <div class="stats-body">
+
+      <!-- Controls -->
+      <div class="section-title" style="margin-top: 5px;">Detection Controls</div>
+      <div class="toggle-row">
+        <span class="toggle-label">Person Detect</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-person" checked onchange="updateToggles()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Action Processing</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-action" checked onchange="updateToggles()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Emotion Analysis</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-emotion" checked onchange="updateToggles()">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <button class="notify-btn" onclick="sendManualAlert()">
+        <span>📢</span> Send Message
+      </button>
+
+      <div class="section-title">Metrics</div>
+      <!-- Metric chips -->
+      <div class="metric-row">
+        <span class="metric-label">Persons</span>
+        <span class="metric-val green" id="stat-persons">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Motion</span>
+        <span class="metric-val" id="stat-motion" style="font-size:14px;">–</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">FPS</span>
+        <span class="metric-val accent" id="stat-fps">–</span>
+      </div>
+
+      <div class="section-title">Detected Persons</div>
+      <div id="person-cards">
+        <div class="no-persons">
+          <div class="no-icon">🧍</div>No persons detected
+        </div>
+      </div>
+
+    </div>
+    <button class="stop-btn" id="stop-btn" onclick="stopCamera()" disabled>⏹ Stop Camera</button>
+  </aside>
+</div>
+
+<!-- ─── Dashboard View ─── -->
+
+{% endblock %}

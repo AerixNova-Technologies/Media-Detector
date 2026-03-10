@@ -51,7 +51,7 @@ from modules.action_detection import ActionDetector
 from utils.stream import VideoStream
 from utils.drawing import draw_person, draw_face, draw_status_bar, draw_motion_mask
 from utils.fps_counter import FPSCounter
-from imou_connector import ImouAPI, _find_working_datacenter
+from modules.imou_connector import ImouAPI, _find_working_datacenter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -421,7 +421,7 @@ def camera_select_startup() -> str | None:
     print(f"\n  {'#':<4} {'Camera Name':<25} {'Status':<22} Device ID")
     print("  " + "─" * 65)
     for i, dev in enumerate(devices):
-        from imou_connector import _get_device_status
+        from modules.imou_connector import _get_device_status
         status_str = _get_device_status(dev)
         name       = (dev.get("name") or dev.get("deviceName") or "Unnamed")[:24]
         dev_id     = dev.get("deviceId") or dev.get("deviceID") or "?"

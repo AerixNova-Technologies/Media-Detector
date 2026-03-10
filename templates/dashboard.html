@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% set active_page = 'dashboard' %}
+{% block content %}
+<div id="view-dashboard" class="dashboard-layout" style="display:block;">
+  <div class="settings-card" style="max-width: 100%; text-align: center;">
+    <h2 style="font-size: 24px; color: var(--accent);">System Dashboard</h2>
+    <p style="color: var(--muted); font-size: 14px; margin-bottom: 30px;">Live Camera Connection Status</p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div style="background: var(--surface); padding: 40px; border-radius: 12px; border: 1px solid var(--green);">
+        <div style="font-size: 48px; color: var(--green); font-weight: bold; font-family: monospace;"
+          id="dash-cam-online">0</div>
+        <div style="font-size: 14px; color: var(--muted); margin-top: 5px; text-transform: uppercase;">Cameras
+          Online</div>
+      </div>
+      <div style="background: var(--surface); padding: 40px; border-radius: 12px; border: 1px solid var(--red);">
+        <div style="font-size: 48px; color: var(--red); font-weight: bold; font-family: monospace;"
+          id="dash-cam-offline">0</div>
+        <div style="font-size: 14px; color: var(--muted); margin-top: 5px; text-transform: uppercase;">Cameras
+          Offline</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Settings View ─── -->
+
+{% endblock %}

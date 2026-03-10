@@ -34,6 +34,7 @@ def draw_person(
     track_id: int,
     emotion: str = "",
     action: str = "",
+    identity: str = "",
 ) -> None:
     """Draw a bounding box and text labels for one tracked person."""
     x1, y1, x2, y2 = (int(v) for v in bbox)
@@ -56,7 +57,7 @@ def draw_person(
 
     # Label block above the box
     lines = [
-        f"ID: {track_id}",
+        f"Staff: {identity}" if (identity and identity != "Unknown") else f"Person #{track_id}",
         f"Emotion: {emotion}" if emotion else None,
         f"Action: {action}" if action else None,
     ]
