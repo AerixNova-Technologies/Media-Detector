@@ -38,7 +38,6 @@ from modules.face_recognition import FaceRecognizer
 from utils.stream import VideoStream
 from utils.drawing import draw_person, draw_face, draw_status_bar
 from utils.fps_counter import FPSCounter
-from modules.imou_connector import ImouAPI, _find_working_datacenter, _get_device_status
 from modules.notifier import TelegramNotifier
 
 # ─── Imou credentials ────────────────────────────────────────────────────────
@@ -54,8 +53,6 @@ if os.path.exists(env_path):
                 key, val = line.split("=", 1)
                 os.environ.setdefault(key.strip(), val.strip())
 
-APP_ID     = os.environ.get("IMOU_APP_ID", "")
-APP_SECRET = os.environ.get("IMOU_APP_SECRET", "")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -499,77 +496,21 @@ class CameraManager:
 
 
 
-# ─── Imou camera fetcher ───────────────────────────────────────────────────────
-
-def _fetch_imou_cameras():
-    """Return list of Imou camera dicts with {id, name, status, stream_url}."""
-    try:
-        base = _find_working_datacenter()
-        if not base:
-            return []
-        api = ImouAPI(APP_ID, APP_SECRET, base)
-        api.get_token()
-        devices = api.list_devices()
-        result = []
-        for i, dev in enumerate(devices):
-            dev_id   = dev.get("deviceId") or dev.get("deviceID") or f"dev{i}"
-            dev_name = dev.get("name") or dev.get("deviceName") or "Imou Camera"
-            status   = _get_device_status(dev)
-
-            # Enumerate channels — NVR/DVR devices have multiple channels, each
-            # representing a physical camera.  Single IPC cameras return 0 or 1 channel.
-            channels = api.list_channels(dev_id)
-
-            if len(channels) > 1:
-                # Multi-channel device: expose each channel as its own camera entry
-                for ch in channels:
-                    ch_id   = str(ch.get("channelId", "0"))
-                    ch_name = (ch.get("channelName") or ch.get("name")
-                               or f"{dev_name} – Ch{int(ch_id) + 1}")
-                    result.append({
-                        "id":         f"imou_{dev_id}_ch{ch_id}",
-                        "name":       ch_name,
-                        "status":     status,
-                        "type":       "imou",
-                        "dev_id":     dev_id,
-                        "channel_id": ch_id,
-                        "base":       base,
-                    })
-            else:
-                # Single-channel IPC (or channel list unavailable)
-                ch_id = str(channels[0].get("channelId", "0")) if channels else "0"
-                result.append({
-                    "id":         f"imou_{dev_id}",
-                    "name":       dev_name,
-                    "status":     status,
-                    "type":       "imou",
-                    "dev_id":     dev_id,
-                    "channel_id": ch_id,
-                    "base":       base,
-                })
-        return result
-    except Exception as e:
-        log.warning("Imou fetch failed: %s", e)
-        return []
-
-
-# Cache cameras 60 s so repeated UI requests don't re-auth every time
-_camera_cache: list[dict] = []
-_camera_cache_ts: float   = 0.0
-_camera_lock = threading.Lock()
+# ─── Camera list ───────────────────────────────────────────────────────────────
 
 def get_all_cameras(force=False, user_email=None):
-    global _camera_cache, _camera_cache_ts
-    
-    with _camera_lock:
-        if force or (time.time() - _camera_cache_ts) >= 60 or not _camera_cache:
-            base_cams = [{"id": "webcam", "name": "Webcam (Built-in)", "status": "🟢 Online", "type": "webcam"}]
-            base_cams.extend(_fetch_imou_cameras())
-            _camera_cache = base_cams
-            _camera_cache_ts = time.time()
-        
-        cameras = list(_camera_cache)
-        
+    """Return all cameras: static RTSP list from config + webcam + DB local cameras."""
+    cameras = [{"id": "webcam", "name": "Webcam (Built-in)", "status": "🟢 Online", "type": "webcam"}]
+
+    for cam in cfg.CAMERAS:
+        cameras.append({
+            "id":     cam["id"],
+            "name":   cam["name"],
+            "status": "🟢 Online",
+            "type":   "rtsp",
+            "url":    cam["url"],
+        })
+
     if user_email:
         try:
             conn = get_db_connection()
@@ -580,12 +521,12 @@ def get_all_cameras(force=False, user_email=None):
             conn.close()
             for row in local_cams:
                 cameras.append({
-                    "id": f"local_{row['id']}",
-                    "name": row['name'],
-                    "status": "🟢 Online", # Assume local IP cameras are online by default unless pinged
-                    "type": "local",
-                    "brand": row['brand'],
-                    "ip": row['ip_address']
+                    "id":     f"local_{row['id']}",
+                    "name":   row['name'],
+                    "status": "🟢 Online",
+                    "type":   "local",
+                    "brand":  row['brand'],
+                    "ip":     row['ip_address'],
                 })
         except Exception as e:
             log.error(f"Error fetching local cameras: {e}")
@@ -742,18 +683,8 @@ def api_select():
 
     if cam["type"] == "webcam":
         cam_mgr.start(0, cam["name"])
-    elif cam["type"] == "imou":
-        try:
-            base   = cam["base"]
-            api    = ImouAPI(APP_ID, APP_SECRET, base)
-            api.get_token()
-            stream_url = api.get_rtsp(cam["dev_id"], cam.get("channel_id", "0"))
-            if not stream_url:
-                return jsonify({"error": "Could not get stream URL from Imou"}), 500
-            cam_mgr.start(stream_url, cam["name"])
-        except Exception as e:
-            log.error("Imou start error: %s", e)
-            return jsonify({"error": str(e)}), 500
+    elif cam["type"] == "rtsp":
+        cam_mgr.start(cam["url"], cam["name"])
     elif cam["type"] == "local":
         try:
             db_id = cam_id.replace("local_", "")
@@ -1000,7 +931,6 @@ def api_dashboard_info():
 @app.route("/api/settings_info")
 def api_settings_info():
     return jsonify({
-        "app_id": os.environ.get("IMOU_APP_ID", ""),
         "tg_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
         "tg_chats": os.environ.get("TELEGRAM_CHAT_ID", "")
     })

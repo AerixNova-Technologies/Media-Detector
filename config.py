@@ -5,7 +5,21 @@ config.py  –  AI CCTV Surveillance System
 from __future__ import annotations
 
 # ─── Video Source ──────────────────────────────────────────────────────────
-SOURCE: int | str = "rtsp://admin:L2BA7F0F@192.168.1.38:554/cam/realmonitor?channel=1&subtype=0"   # IMOU local RTSP
+SOURCE: int | str = "rtsp://admin:L2BA7F0F@192.168.1.38:554/cam/realmonitor?channel=1&subtype=0"   # legacy CLI (main.py)
+
+# ─── Camera List (Web UI) ───────────────────────────────────────────────────
+CAMERAS: list[dict] = [
+    {
+        "id":   "cam_1",
+        "name": "IMOU Camera 1",
+        "url":  "rtsp://admin:L2BA7F0F@192.168.1.38:554/cam/realmonitor?channel=1&subtype=0",
+    },
+    {
+        "id":   "cam_2",
+        "name": "IMOU Camera 2",
+        "url":  "rtsp://admin:L28DED5C@192.168.1.39:554/cam/realmonitor?channel=1&subtype=0",
+    },
+]
 FRAME_WIDTH:  int   = 1280
 FRAME_HEIGHT: int   = 720
 TARGET_FPS:   float = 30.0
