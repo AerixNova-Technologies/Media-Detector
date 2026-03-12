@@ -513,16 +513,40 @@ def _fetch_imou_cameras():
         result = []
         for i, dev in enumerate(devices):
             dev_id   = dev.get("deviceId") or dev.get("deviceID") or f"dev{i}"
-            name     = dev.get("name") or dev.get("deviceName") or "Imou Camera"
+            dev_name = dev.get("name") or dev.get("deviceName") or "Imou Camera"
             status   = _get_device_status(dev)
-            result.append({
-                "id":     f"imou_{dev_id}",
-                "name":   name,
-                "status": status,
-                "type":   "imou",
-                "dev_id": dev_id,
-                "base":   base,
-            })
+
+            # Enumerate channels — NVR/DVR devices have multiple channels, each
+            # representing a physical camera.  Single IPC cameras return 0 or 1 channel.
+            channels = api.list_channels(dev_id)
+
+            if len(channels) > 1:
+                # Multi-channel device: expose each channel as its own camera entry
+                for ch in channels:
+                    ch_id   = str(ch.get("channelId", "0"))
+                    ch_name = (ch.get("channelName") or ch.get("name")
+                               or f"{dev_name} – Ch{int(ch_id) + 1}")
+                    result.append({
+                        "id":         f"imou_{dev_id}_ch{ch_id}",
+                        "name":       ch_name,
+                        "status":     status,
+                        "type":       "imou",
+                        "dev_id":     dev_id,
+                        "channel_id": ch_id,
+                        "base":       base,
+                    })
+            else:
+                # Single-channel IPC (or channel list unavailable)
+                ch_id = str(channels[0].get("channelId", "0")) if channels else "0"
+                result.append({
+                    "id":         f"imou_{dev_id}",
+                    "name":       dev_name,
+                    "status":     status,
+                    "type":       "imou",
+                    "dev_id":     dev_id,
+                    "channel_id": ch_id,
+                    "base":       base,
+                })
         return result
     except Exception as e:
         log.warning("Imou fetch failed: %s", e)
@@ -723,7 +747,7 @@ def api_select():
             base   = cam["base"]
             api    = ImouAPI(APP_ID, APP_SECRET, base)
             api.get_token()
-            stream_url = api.get_rtsp(cam["dev_id"])
+            stream_url = api.get_rtsp(cam["dev_id"], cam.get("channel_id", "0"))
             if not stream_url:
                 return jsonify({"error": "Could not get stream URL from Imou"}), 500
             cam_mgr.start(stream_url, cam["name"])

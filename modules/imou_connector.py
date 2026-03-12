@@ -189,6 +189,16 @@ class ImouAPI:
             "channelId": channel_id,
         })
 
+    def list_channels(self, device_id: str) -> list[dict]:
+        """Return channel list for a multi-channel device (NVR/DVR).
+        Returns an empty list if the device is a single-channel IPC."""
+        try:
+            data = self._post("/listDeviceChannelInfo", {"deviceId": device_id})
+            return data.get("channelList", [])
+        except Exception as e:
+            log.debug("list_channels failed for %s: %s", device_id, e)
+            return []
+
     def get_rtsp(self, device_id: str, channel_id: str = "0") -> str | None:
         """
         Convenience: bind + get stream info and return a playable URL.
