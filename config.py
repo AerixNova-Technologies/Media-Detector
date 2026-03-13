@@ -3,30 +3,32 @@ config.py  –  AI CCTV Surveillance System
 ─────────────────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
+import os
 
 # ─── Video Source ──────────────────────────────────────────────────────────
-SOURCE: int | str = "rtsp://admin:L2BA7F0F@192.168.1.38:554/cam/realmonitor?channel=1&subtype=0"   # legacy CLI (main.py)
+SOURCE: int | str = os.environ.get("IMOU_CAM1_URL", 0)   # Default to Camera 1 if set, else webcam
+
 
 # ─── Camera List (Web UI) ───────────────────────────────────────────────────
 CAMERAS: list[dict] = [
     {
         "id":   "cam_1",
         "name": "IMOU Camera 1",
-        "url":  "rtsp://admin:L2BA7F0F@192.168.1.38:554/cam/realmonitor?channel=1&subtype=0",
+        "url":  os.environ.get("IMOU_CAM1_URL", "rtsp://admin:L2BA7F0F@192.168.1.40:554/cam/realmonitor?channel=1&subtype=0"),
     },
     {
         "id":   "cam_2",
         "name": "IMOU Camera 2",
-        "url":  "rtsp://admin:L28DED5C@192.168.1.39:554/cam/realmonitor?channel=1&subtype=0",
+        "url":  os.environ.get("IMOU_CAM2_URL", "rtsp://admin:L28DED5C@192.168.1.240:554/cam/realmonitor?channel=1&subtype=0"),
     },
 ]
 FRAME_WIDTH:  int   = 1280
 FRAME_HEIGHT: int   = 720
 TARGET_FPS:   float = 30.0
 
-# Smaller resolution fed into AI models (faster inference)
+# Professional AI Resolution (YOLO standard 640)
 AI_FRAME_WIDTH:  int = 640
-AI_FRAME_HEIGHT: int = 360
+AI_FRAME_HEIGHT: int = 384
 
 # ─── Motion Detection ──────────────────────────────────────────────────────
 MOTION_MIN_AREA:      int   = 800    # lower = catches subtle movement
@@ -38,20 +40,21 @@ MOTION_VAR_THRESHOLD: float = 12.0  # lower = more sensitive
 MOTION_COOLDOWN_SEC: float = 30.0
 
 # ─── Person Detection (YOLOv8) ─────────────────────────────────────────────
-YOLO_MODEL:       str   = "yolov8n.pt"
-YOLO_CONF:        float = 0.30          # lower = detects people in tricky lighting
-YOLO_DEVICE:      str   = "cpu"          # change to "cuda" if GPU PyTorch installed
-YOLO_SKIP_FRAMES: int   = 1              # run YOLO every frame for max stability
+YOLO_MODEL:       str   = "yolov8s.pt"  # Upgrade to 'Small' model for much higher accuracy
+YOLO_CONF:        float = 0.35          # Slightly lower to catch sitting/leaning people
+YOLO_DEVICE:      str   = "cpu" 
+YOLO_SKIP_FRAMES: int   = 1             # Process every single frame sent to AI
 
 import os
 # Detection mode:
 #   yolo_only -> YOLO + DeepSORT only  (fast, stable)
 #   full      -> + RetinaFace + DeepFace + Action
-DETECTION_MODE: str = os.environ.get("DETECTION_MODE", "action_only")  # person box always on + SlowFast action (no emotion)
+DETECTION_MODE: str = os.environ.get("DETECTION_MODE", "yolo_only")  # Optimized for CPU DEMO speed
 
 # ─── Tracking (DeepSORT) ───────────────────────────────────────────────────
-DEEPSORT_MAX_AGE:  int = 20              # frames before a lost track is deleted
-DEEPSORT_N_INIT:   int = 2
+DEEPSORT_MAX_AGE:  int = 15              # Standard surveillance persistence
+DEEPSORT_N_INIT:   int = 3              # Confirm ID in 3 frames for zero-lag entry
+DEEPSORT_MAX_IOU:  float = 0.7          
 DEEPSORT_EMBEDDER: str = "mobilenet"
 
 # ─── Emotion Detection (DeepFace) ──────────────────────────────────────────
@@ -68,14 +71,20 @@ ACTION_SLOW_STRIDE: int  = 8
 ACTION_DEVICE:      str  = "cpu"
 
 # ─── Threading ─────────────────────────────────────────────────────────────
-AI_THREAD_FRAME_SKIP: int = 2
+AI_THREAD_FRAME_SKIP: int = 4            # Skip to 4 while using heavier 'S' model on CPU
 
-# Max age (seconds) of an AI result before boxes are hidden from the display.
-# Must be LONGER than the worst-case AI pipeline time on CPU (~1-2 sec).
-# Ghost boxes are removed because DeepSORT stops outputting old tracks
-# after DEEPSORT_MAX_AGE frames — not by this timer alone.
-RESULT_MAX_AGE_SEC: float = 3.0
+# Result age: match the AI thread speed (approx 0.5s - 1.5s)
+RESULT_MAX_AGE_SEC: float = 1.5
+
+# ─── Counting (Tripwire) ──────────────────────────────────────────────────
+ENABLE_COUNTING: bool = True
+# Tripwire position (0.0 to 1.0 of frame height/width)
+LINE_POSITION:  float = 0.5   
+LINE_DIRECTION:   str = "horizontal" # "horizontal" or "vertical" 
+COLOR_ENTRY:    tuple = (0, 255, 0)   # Green
+COLOR_EXIT:     tuple = (0, 0, 255)   # Red
 
 # ─── Display ───────────────────────────────────────────────────────────────
 SHOW_MOTION_MASK: bool = False
 WINDOW_NAME:      str  = "AI CCTV Surveillance"
+SHOW_TRIPWIRE:    bool = False

@@ -244,7 +244,7 @@ class ActionDetector:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="action")
 
         if self.enabled and _PTV_OK:
-            self._load_model()
+            self._executor.submit(self._load_model)
         elif self.enabled and not _PTV_OK:
             log.warning("pytorchvideo not available – action detection disabled.")
             self.enabled = False

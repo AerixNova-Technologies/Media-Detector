@@ -11,6 +11,7 @@ Supports:
 
 from __future__ import annotations
 
+import os
 import time
 import logging
 import threading
@@ -67,11 +68,22 @@ class VideoStream:
         )
 
         if is_url:
+            # Force UDP for lower latency/higher FPS on RTSP
+            # This must be set before VideoCapture
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
             self._cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
         else:
-            self._cap = cv2.VideoCapture(src)
+            # On Windows, DirectShow (CAP_DSHOW) is MUCH faster for webcam init
+            if os.name == 'nt' and isinstance(src, int):
+                self._cap = cv2.VideoCapture(src, cv2.CAP_DSHOW)
+            else:
+                self._cap = cv2.VideoCapture(src)
 
         if self._cap.isOpened():
+            # Request MJPG for local cameras to speed up grab on some devices
+            if not is_url:
+                self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                
             self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
             self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self._cap.set(cv2.CAP_PROP_FPS,          self.target_fps)

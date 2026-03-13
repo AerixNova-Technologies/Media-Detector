@@ -79,10 +79,9 @@ def draw_person(
         (tw, _), _ = cv2.getTextSize(line, font, font_scale, font_thickness)
         max_w = max(max_w, tw)
 
-    # Semi-transparent background
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (x1, block_y1), (x1 + max_w + pad * 2, block_y2), color, -1)
-    cv2.addWeighted(overlay, 0.45, frame, 0.55, 0, frame)
+    # Solid background for speed (avoiding expensive frame.copy() + addWeighted)
+    cv2.rectangle(frame, (x1, block_y1), (x1 + max_w + pad * 2, block_y2), (30, 30, 30), -1)
+    cv2.rectangle(frame, (x1, block_y1), (x1 + max_w + pad * 2, block_y2), color, 1)
 
     for i, line in enumerate(lines):
         ty = block_y1 + pad + (i + 1) * line_height - 2
@@ -110,6 +109,8 @@ def draw_status_bar(
     motion: bool,
     n_persons: int,
     fps: float,
+    entries: int = 0,
+    exits: int = 0,
 ) -> None:
     """Top-left status overlay."""
     h, w = frame.shape[:2]
@@ -117,6 +118,7 @@ def draw_status_bar(
         f"FPS: {fps:.1f}",
         f"Motion: {'YES' if motion else 'NO'}",
         f"Persons: {n_persons}",
+        f"In: {entries} | Out: {exits}",
     ]
     font = cv2.FONT_HERSHEY_SIMPLEX
     fscale = 0.55
@@ -125,10 +127,9 @@ def draw_status_bar(
     pad = 8
     max_w = max(cv2.getTextSize(l, font, fscale, fthick)[0][0] for l in lines)
 
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (max_w + pad * 2, len(lines) * lh + pad * 2),
-                  (30, 30, 30), -1)
-    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+    # Solid dark background for status bar
+    cv2.rectangle(frame, (0, 0), (max_w + pad * 2, len(lines) * lh + pad * 2), (20, 20, 20), -1)
+    cv2.rectangle(frame, (0, 0), (max_w + pad * 2, len(lines) * lh + pad * 2), (60, 60, 60), 1)
 
     for i, line in enumerate(lines):
         color = (0, 255, 100) if ("YES" in line or "Motion" not in line) else (0, 120, 255)
@@ -150,3 +151,20 @@ def draw_motion_mask(
     tint = np.zeros_like(frame)
     tint[mask > 0] = (0, 255, 80)
     cv2.addWeighted(tint, alpha, frame, 1 - alpha, 0, frame)
+
+
+def draw_tripwire(frame: np.ndarray, position: float, direction: str, color_in: tuple, color_out: tuple) -> None:
+    """Draw a horizontal or vertical crossing line."""
+    h, w = frame.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    
+    if direction == "vertical":
+        x = int(position * w)
+        cv2.line(frame, (x, 0), (x, h), (100, 100, 100), 2, cv2.LINE_AA)
+        cv2.putText(frame, "ENTRY >", (x + 10, 30), font, 0.6, color_in, 2)
+        cv2.putText(frame, "< EXIT", (x - 80, 30), font, 0.6, color_out, 2)
+    else:
+        y = int(position * h)
+        cv2.line(frame, (0, y), (w, y), (100, 100, 100), 2, cv2.LINE_AA)
+        cv2.putText(frame, "ENTRY - DOWN", (10, y + 25), font, 0.6, color_in, 2)
+        cv2.putText(frame, "EXIT - UP", (10, y - 10), font, 0.6, color_out, 2)

@@ -76,9 +76,23 @@ class PersonDetector:
 
         boxes: list[list[float]] = []
         for result in results:
+            if len(result.boxes) > 0:
+                print(f"DEBUG: YOLO found {len(result.boxes)} persons with conf > {self.conf_threshold}")
             for box in result.boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 conf = float(box.conf[0])
+                
+                # 1. Filter out "Giant Boxes" (likely artifacts/ghosts)
+                bw, bh = (x2 - x1), (y2 - y1)
+                if bw > (frame.shape[1] * 0.85) or bh > (frame.shape[0] * 0.85):
+                    continue
+
+                # 2. Filter out "Extreme Flat Boxes" (Furniture, Fans, Tables)
+                # Humans are usually vertical. If width > 2x height, it's definitely not a person.
+                # Relaxed from 1.5x to 2.0x to catch sitting people properly.
+                if bw > (bh * 2.1):
+                    continue
+                    
                 boxes.append([x1, y1, x2, y2, conf])
 
         return boxes

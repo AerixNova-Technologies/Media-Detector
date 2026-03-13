@@ -269,6 +269,10 @@
       </div>
 
       <div class="settings-row" style="margin-top: 20px;">
+        <label>Staff Number / ID</label>
+        <input type="text" id="staff-number-input" placeholder="e.g. STF001" />
+      </div>
+      <div class="settings-row" style="margin-top: 20px;">
         <label>Select Photos (Multiple)</label>
         <div class="upload-area" onclick="document.getElementById('file-upload').click()">
           <div class="upload-icon">📸</div>
@@ -388,7 +392,10 @@
   <div class="modal-card">
     <button class="modal-close" onclick="closeStaffModal()">×</button>
     <div style="display: flex; justify-content: space-between; align-items: center;">
-      <h2 id="modal-staff-name" style="color: var(--text);">Staff Name</h2>
+      <div>
+        <h2 id="modal-staff-name" style="color: var(--text); margin-bottom: 2px;">Staff Name</h2>
+        <p id="modal-staff-number" style="font-size: 12px; color: var(--muted);"></p>
+      </div>
       <button class="upload-btn"
         style="margin-top:0; border-color: var(--red); color: var(--red); background: rgba(239, 68, 68, 0.1);"
         onclick="deleteStaffProfile()">Delete Profile</button>
@@ -528,11 +535,12 @@
 
   async function uploadStaffPhotos() {
     const nameInput = document.getElementById('staff-name-input').value.trim();
+    const numberInput = document.getElementById('staff-number-input').value.trim();
     const statusEl = document.getElementById('upload-status');
 
-    if (!nameInput) {
+    if (!nameInput || !numberInput) {
       statusEl.style.color = "var(--red)";
-      statusEl.innerText = "❌ Please provide a staff name.";
+      statusEl.innerText = "❌ Please provide both staff name and number.";
       return;
     }
     if (selectedFiles.length === 0) {
@@ -547,6 +555,7 @@
 
     const formData = new FormData();
     formData.append('staff_name', nameInput);
+    formData.append('staff_number', numberInput);
     selectedFiles.forEach(file => {
       formData.append('photos', file);
     });
@@ -562,6 +571,7 @@
         statusEl.style.color = "var(--green)";
         statusEl.innerText = "✅ Successfully uploaded profile for " + nameInput;
         document.getElementById('staff-name-input').value = '';
+        document.getElementById('staff-number-input').value = '';
         selectedFiles = [];
         document.getElementById('selected-files-preview').innerHTML = '';
         setTimeout(loadSavedStaff, 1000);
@@ -592,12 +602,12 @@
 
       gallery.innerHTML = data.profiles.map(profile => {
         return `
-          <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; text-align:center; cursor:pointer;" onclick="openStaffModal('${profile.name}')">
+          <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; text-align:center; cursor:pointer;" onclick="openStaffModal('${profile.name}', '${profile.number}')">
             <div style="width:80px; height:80px; margin:0 auto 10px; border-radius:50%; overflow:hidden; border:2px solid var(--accent); opacity:0.8;">
               <img src="${profile.thumbnail}" style="width:100%; height:100%; object-fit:cover;">
             </div>
             <div style="font-size:14px; font-weight:600; color:var(--text);">${profile.name}</div>
-            <div style="font-size:11px; color:var(--muted); margin-top:4px;">${profile.photo_count} Photos</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">ID: ${profile.number} • ${profile.photo_count} Photos</div>
           </div>
         `;
       }).join('');
@@ -606,11 +616,12 @@
     }
   }
 
-  let currentModalStaff = "";
+  let currentModalStaffNumber = "";
 
-  async function openStaffModal(staffName) {
-    currentModalStaff = staffName;
+  async function openStaffModal(staffName, staffNumber) {
+    currentModalStaffNumber = staffNumber;
     document.getElementById('modal-staff-name').innerText = staffName;
+    document.getElementById('modal-staff-number').innerText = "Staff ID: " + staffNumber;
     const modal = document.getElementById('staff-modal');
     modal.classList.add('active');
 
@@ -619,16 +630,16 @@
 
   function closeStaffModal() {
     document.getElementById('staff-modal').classList.remove('active');
-    currentModalStaff = "";
+    currentModalStaffNumber = "";
   }
 
   async function refreshModalGallery() {
-    if (!currentModalStaff) return;
+    if (!currentModalStaffNumber) return;
     const gallery = document.getElementById('modal-gallery');
     gallery.innerHTML = '<span style="color:var(--muted); font-size:12px;">Loading photos...</span>';
 
     try {
-      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaff));
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaffNumber));
       const data = await res.json();
 
       if (data.error) {
@@ -640,7 +651,6 @@
         return `
           <div class="gallery-item">
             <img src="${p.url}">
-            <button class="del-btn" onclick="deleteStaffPhoto('${p.filename}')">Delete</button>
           </div>
         `;
       }).join('');
@@ -670,7 +680,7 @@
   async function deleteStaffProfile() {
     if (!confirm('Are you sure you want to completely delete this profile and all its photos?')) return;
     try {
-      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaff), {
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentModalStaffNumber), {
         method: 'DELETE'
       });
       const data = await res.json();

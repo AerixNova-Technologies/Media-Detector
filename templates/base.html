@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -1038,6 +1038,13 @@
 
         function updateStats(d) {
           document.getElementById('stat-persons').textContent = d.persons;
+
+          const entryEl = document.getElementById('stat-entries');
+          if (entryEl) entryEl.textContent = d.entries || '0';
+
+          const exitEl = document.getElementById('stat-exits');
+          if (exitEl) exitEl.textContent = d.exits || '0';
+
           document.getElementById('stat-fps').textContent = d.fps;
           document.getElementById('fps-display').textContent = d.fps + ' FPS';
           const motEl = document.getElementById('stat-motion');
@@ -1071,6 +1078,8 @@
 
         function resetStats() {
           document.getElementById('stat-persons').textContent = '0';
+          if (document.getElementById('stat-entries')) document.getElementById('stat-entries').textContent = '0';
+          if (document.getElementById('stat-exits')) document.getElementById('stat-exits').textContent = '0';
           document.getElementById('stat-fps').textContent = '–';
           document.getElementById('fps-display').textContent = '– FPS';
           document.getElementById('stat-motion').textContent = '–';
