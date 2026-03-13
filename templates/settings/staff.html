@@ -1,366 +1,1244 @@
 {% extends "base.html" %}
-{% set active_page = 'settings' %}
-{% set sub_page = 'staff' %}
+{% set active_page = 'members' %}
+{% set sub_page = 'members' %}
 
 {% block content %}
-<div id="view-settings-staff" style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-<div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
+<div id="view-settings-staff"
+  style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
+  <div
+    style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
 
-  <!-- Staff Directory List -->
-  <div id="mod-upload" class="s-mod-page active">
-    <a href="/settings" class="s-back">‹ Back to Settings</a>
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <h2 class="s-mod-title">Staff Directory</h2>
-        <p class="s-mod-sub">Manage staff recognition profiles</p>
+    <!-- Staff Directory List -->
+    <div id="mod-upload" class="s-mod-page active">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h2 class="s-mod-title">Member Directory</h2>
+          <p class="s-mod-sub">Manage member recognition profiles</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button id="toggle-summary-btn" class="secondary-btn" onclick="toggleSummaryCards()"><span>⌃</span> Hide Summary</button>
+          <button class="secondary-btn" onclick="openStaffImport()"><span>📤</span> Import</button>
+          <button class="secondary-btn" onclick="exportStaff()"><span>📥</span> Export</button>
+          <button class="upload-btn" onclick="openStaffCreate()" style="margin:0; background: var(--accent); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600;">+ Create Member</button>
+        </div>
       </div>
-      <button class="upload-btn" onclick="openStaffCreate()" style="margin:0; background: var(--accent); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600;">+ Create Staff</button>
-    </div>
-    
-    <hr style="border:0; border-top:1px solid var(--border); margin:24px 0;">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-      <h3 style="font-size:16px; font-weight:700; color: var(--text);">Saved Staff Profiles</h3>
-      <div style="position:relative; width:300px;">
-        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
-        <input type="text" id="staff-search-input" placeholder="Search by name or phone..." 
-               style="width:100%; padding:8px 12px 8px 36px; font-size:13px; border:1px solid var(--border); border-radius:8px; background: var(--bg); color: var(--text);"
-               onkeyup="filterStaff()">
-      </div>
-    </div>
-    <div id="saved-staff-gallery" class="staff-gallery"></div>
-  </div>
 
-  <!-- Staff Create/Edit Form (Initially hidden) -->
-  <div id="mod-staff-create" class="s-mod-page">
-    <button class="s-back" onclick="closeStaffCreate()">‹ Back to Directory</button>
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <h2 class="s-mod-title" id="staff-form-title">Create New Staff</h2>
-        <p class="s-mod-sub" id="staff-form-sub">Enter staff details and upload reference photos.</p>
+      <div id="member-summary-section" class="member-summary-section">
+        <div class="member-summary-card">
+          <div class="member-summary-label">Total Members</div>
+          <div class="member-summary-value" id="summary-total-members">0</div>
+        </div>
+        <div class="member-summary-card">
+          <div class="member-summary-label">Active Members</div>
+          <div class="member-summary-value" id="summary-active-members">0</div>
+        </div>
+        <div class="member-summary-card">
+          <div class="member-summary-label">Inactive Members</div>
+          <div class="member-summary-value" id="summary-inactive-members">0</div>
+        </div>
+      </div>
+
+      <div id="member-controls-row" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:20px;">
+          <div style="position:relative; width:340px;">
+          <span
+            style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
+          <input type="text" id="staff-search-input" placeholder="Search by name or phone..."
+            style="width:100%; padding:8px 12px 8px 36px; font-size:13px; border:1px solid var(--border); border-radius:8px; background: var(--bg); color: var(--text);"
+            onkeyup="filterStaff()">
+        </div>
+        </div>
+        <div class="view-toggles"
+          style="display:flex; background: var(--surface2); padding:3px; border-radius:8px; border:1px solid var(--border);">
+          <button onclick="changeView('grid')" id="btn-view-grid" class="view-btn active"
+            style="padding:6px 12px; border:none; background:none; cursor:pointer; border-radius:6px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color: var(--muted); transition: all 0.2s;">
+            <span>⊞</span> Grid
+          </button>
+          <button onclick="changeView('list')" id="btn-view-list" class="view-btn"
+            style="padding:6px 12px; border:none; background:none; cursor:pointer; border-radius:6px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color: var(--muted); transition: all 0.2s;">
+            <span>☰</span> List
+          </button>
+        </div>
+      </div>
+
+      <div id="saved-staff-gallery" class="staff-gallery view-container"></div>
+
+      <div id="saved-staff-list" class="view-container" style="display:none; margin-top:20px; overflow-x: auto;">
+        <table
+          style="width:100%; border-collapse:collapse; background: var(--surface2); border-radius:12px; overflow:hidden; border:1px solid var(--border); min-width: 1050px;">
+          <thead style="background: var(--surface); text-align:left;">
+            <tr>
+              <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 220px;">Member</th>
+              <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 150px;">Phone</th>
+              <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 250px;">Email</th>
+              <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 110px;">Status</th>
+              <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; text-align:right; width: 60px;"></th>
+            </tr>
+          </thead>
+          <tbody id="staff-table-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div id="pagination-container"
+        style="margin-top:24px; padding:12px 20px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
       </div>
     </div>
-    
-    <div style="margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:30px;">
-      <div style="background: var(--surface2); padding:24px; border-radius:12px; border:1px solid var(--border);">
-        <h4 style="margin-bottom:16px; font-size:15px; color: var(--text);">Staff Details</h4>
+
+    <!-- Staff Create/Edit Form (Initially hidden) -->
+    <div id="mod-staff-create" class="s-mod-page">
+      <button class="s-back" onclick="closeStaffCreate()">‹ Back to Directory</button>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h2 class="s-mod-title" id="staff-form-title">Create New Member</h2>
+          <p class="s-mod-sub" id="staff-form-sub">Enter member details and upload reference photos.</p>
+        </div>
         <input type="hidden" id="staff-original-name">
-        <div class="s-field"><label>Full Name *</label><input type="text" id="staff-name-input" placeholder="e.g. John Doe" /></div>
-        <div class="s-field"><label>Email Address</label><input type="email" id="staff-email-input" placeholder="john@example.com" /></div>
-        <div class="s-field"><label>Phone Number</label><input type="text" id="staff-phone-input" placeholder="+1 234 567 890" /></div>
-        <div class="s-field"><label>Address / Department</label><input type="text" id="staff-address-input" placeholder="Engineering Dept..." /></div>
+      </div>
 
-        <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:20px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h4 style="font-size:14px; margin:0; color: var(--text);">Communication Details</h4>
-            <button type="button" onclick="addCommGroup()" style="background: var(--bg); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; color: var(--text);">+ Add New</button>
+      <div style="margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:30px;">
+        <div style="background: var(--surface2); padding:24px; border-radius:12px; border:1px solid var(--border);">
+          <h4 style="margin-bottom:16px; font-size:15px; color: var(--text);">Member Details</h4>
+          <div class="s-field"><label>Name *</label><input type="text" id="staff-name-input"
+              placeholder="e.g. John Doe" onchange="handleMemberPrimaryFieldChange()" /></div>
+          <div class="s-field"><label>Email Address</label><input type="email" id="staff-email-input"
+              placeholder="john@example.com" onchange="autoSaveMember()" /></div>
+          <div class="s-field"><label>Phone Number</label><input type="text" id="staff-phone-input"
+              placeholder="+1 234 567 890" onchange="handleMemberPrimaryFieldChange()" /></div>
+          <div class="s-field"><label>Address / Department</label><input type="text" id="staff-address-input"
+              placeholder="Engineering Dept..." onchange="autoSaveMember()" /></div>
+
+          <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h4 style="font-size:14px; margin:0; color: var(--text);">Communication Details</h4>
+              <button type="button" onclick="addCommGroup()"
+                style="background: var(--bg); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; color: var(--text);">+
+                Add New</button>
+            </div>
+            <div id="comm-groups-container"></div>
           </div>
-          <div id="comm-groups-container"></div>
+        </div>
+        <div>
+          <div class="s-field">
+            <label>Select Reference Photos *</label>
+            <div
+              style="border:2px dashed var(--border); border-radius:12px; padding:30px; text-align:center; position:relative; background: var(--bg); transition:all 0.2s;"
+              ondragover="this.style.borderColor='var(--accent)';event.preventDefault()"
+              ondragleave="this.style.borderColor='var(--border)'"
+              ondrop="this.style.borderColor='var(--border)';event.preventDefault();handleFileSelect({target:{files:event.dataTransfer.files}})">
+              <input type="file" id="staff-photos-input" multiple accept="image/*"
+                style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="handleFileSelect(event)">
+              <div style="font-size:32px; margin-bottom:10px;">📸</div>
+              <div style="font-size:14px; font-weight:700; color: var(--text);">Click to select photos</div>
+              <div style="font-size:11px; color: var(--muted); margin-top:4px;">JPG, PNG — 5 to 10 images recommended
+              </div>
+            </div>
+          </div>
+          <div id="selected-files-preview" style="margin-top:16px;"></div>
+
+          <div id="existing-photos-container"
+            style="display:none; margin-top:24px; border-top:1px solid var(--border); padding-top:20px;">
+            <label
+              style="display:block; font-size:13px; font-weight:600; color: var(--text); margin-bottom:10px;">Previously
+              Uploaded Photos</label>
+            <div id="existing-files-preview"></div>
+          </div>
+
+          <div id="edit-actions-container" style="margin-top:32px;">
+            <button id="submit-upload-btn" class="upload-btn" onclick="uploadStaffPhotos()"
+              style="width:100%; padding:14px; background: var(--accent); color:white; font-size:14px; font-weight:700; border:none; border-radius:10px;">Create
+              Member Profile</button>
+            <button class="upload-btn" onclick="closeStaffCreate()"
+              style="width:100%; margin-top:12px; padding:10px; background:var(--surface2); color:var(--text); font-size:13px; font-weight:700; border:1px solid var(--border); border-radius:10px; cursor:pointer;">Cancel / Back to List</button>
+            <div id="upload-status" style="margin-top:12px; font-size:12px; text-align:center; font-weight:600;"></div>
+            <button id="delete-profile-btn" onclick="deleteStaffProfile()"
+              style="display:none; width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--error-bg); color: var(--red); font-size:12px; border-radius:8px; cursor:pointer;">Delete
+              Entire Profile</button>
+          </div>
         </div>
       </div>
-      <div>
-        <div class="s-field">
-          <label>Select Reference Photos *</label>
-          <div style="border:2px dashed var(--border); border-radius:12px; padding:30px; text-align:center; position:relative; background: var(--bg); transition:all 0.2s;" ondragover="this.style.borderColor='var(--accent)';event.preventDefault()" ondragleave="this.style.borderColor='var(--border)'" ondrop="this.style.borderColor='var(--border)';event.preventDefault();handleFileSelect({target:{files:event.dataTransfer.files}})">
-            <input type="file" id="staff-photos-input" multiple accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="handleFileSelect(event)">
-            <div style="font-size:32px; margin-bottom:10px;">📸</div>
-            <div style="font-size:14px; font-weight:700; color: var(--text);">Click to select photos</div>
-            <div style="font-size:11px; color: var(--muted); margin-top:4px;">JPG, PNG — 5 to 10 images recommended</div>
-          </div>
-        </div>
-        <div id="selected-files-preview" style="margin-top:16px;"></div>
-        
-        <div id="existing-photos-container" style="display:none; margin-top:24px; border-top:1px solid var(--border); padding-top:20px;">
-          <label style="display:block; font-size:13px; font-weight:600; color: var(--text); margin-bottom:10px;">Previously Uploaded Photos</label>
-          <div id="existing-files-preview"></div>
-        </div>
 
-        <div style="margin-top:32px;">
-          <button id="submit-upload-btn" class="upload-btn" onclick="uploadStaffPhotos()" style="width:100%; padding:14px; background: var(--accent); color:white; font-size:14px; font-weight:700; border:none; border-radius:10px;">Create Staff Profile</button>
-          <div id="upload-status" style="margin-top:12px; font-size:12px; text-align:center; font-weight:600;"></div>
-          <button id="delete-profile-btn" onclick="deleteStaffProfile()" style="display:none; width:100%; margin-top:12px; padding:10px; background:none; border:1px solid var(--error-bg); color: var(--red); font-size:12px; border-radius:8px; cursor:pointer;">Delete Entire Profile</button>
-        </div>
-      </div>
     </div>
   </div>
 
+<!-- Import Modal -->
+<div id="import-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
+  <div style="background:var(--surface); width:550px; border-radius:16px; border:1px solid var(--border); box-shadow:var(--shadow-lg); padding:32px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+      <h3 style="margin:0; font-size:18px; font-weight:800; color:var(--text);">Import Members</h3>
+      <button onclick="closeStaffImport()" style="background:none; border:none; font-size:24px; color:var(--muted); cursor:pointer;">✕</button>
+    </div>
+    <div style="margin-bottom:24px;">
+      <div style="display:flex; align-items:center; gap:20px; margin-bottom:20px;">
+        <button onclick="downloadImportTemplate()" style="display:flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); padding:10px 16px; border-radius:10px; font-size:13px; font-weight:700; color:var(--text); cursor:pointer;">
+          <span>📥</span> Download Template
+        </button>
+        <span style="font-size:12px; color:var(--muted);">Use our template for correct formatting</span>
+      </div>
+      <div style="border:2px dashed var(--border); border-radius:12px; padding:40px; text-align:center; position:relative; background: var(--bg); transition:all 0.2s;">
+        <input type="file" id="staff-import-file" accept=".csv" style="position:absolute; inset:0; opacity:0; cursor:pointer;">
+        <div style="font-size:48px; margin-bottom:15px; opacity:0.5;">📤</div>
+        <div style="font-size:14px; font-weight:700; color: var(--text);">Click to upload or drag and drop</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:8px;">CSV or Excel files (max 10MB)</div>
+      </div>
+      <div id="import-filename" style="margin-top:12px; font-size:13px; color:var(--accent); font-weight:700; text-align:center;"></div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <button onclick="closeStaffImport()" style="padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); color:var(--text); font-weight:700; cursor:pointer;">Cancel</button>
+      <button onclick="handleStaffImportSubmit()" style="padding:12px; background:var(--accent); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">Validate</button>
+    </div>
+    <div id="import-status" style="margin-top:16px; text-align:center; font-size:12px; font-weight:600;"></div>
+  </div>
 </div>
+
+<!-- Export Modal -->
+<div id="export-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
+  <div style="background:var(--surface); width:550px; border-radius:16px; border:1px solid var(--border); box-shadow:var(--shadow-lg); padding:32px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+      <h3 style="margin:0; font-size:18px; font-weight:800; color:var(--text);">Export Members</h3>
+      <button onclick="closeStaffExport()" style="background:none; border:none; font-size:24px; color:var(--muted); cursor:pointer;">✕</button>
+    </div>
+    <div style="margin-bottom:24px;">
+      <label style="display:block; font-size:14px; font-weight:700; color:var(--text); margin-bottom:16px;">Export Format</label>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <label class="radio-container">
+          <input type="radio" name="export-format" value="csv" checked>
+          <span class="radio-mark"></span>
+          <span style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600;"><span style="font-size:18px;">📊</span> Excel Spreadsheet</span>
+        </label>
+        <label class="radio-container">
+          <input type="radio" name="export-format" value="pdf">
+          <span class="radio-mark"></span>
+          <span style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600;"><span style="font-size:18px;">📄</span> PDF Document</span>
+        </label>
+      </div>
+    </div>
+    <div style="background:var(--accent-bg); padding:16px; border-radius:12px; margin-bottom:24px;">
+      <p id="export-summary" style="margin:0; font-size:13px; color:var(--accent); font-weight:600;"></p>
+      <p style="margin:4px 0 0 0; font-size:11px; color:var(--muted);">Export format is compatible with import - you can re-import the exported file.</p>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <button onclick="closeStaffExport()" style="padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); color:var(--text); font-weight:700; cursor:pointer;">Cancel</button>
+      <button onclick="handleStaffExportSubmit()" id="confirm-export-btn" style="padding:12px; background:var(--accent); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">Export</button>
+    </div>
+  </div>
 </div>
 
-<style>
-.s-back { display:inline-block; background:none; border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; margin-bottom: 24px; transition: all 0.2s; text-decoration:none; }
-.s-back:hover { border-color: var(--accent); color: var(--accent); }
-.s-mod-title { font-size: 22px; font-weight: 800; color: var(--text); margin:0 0 6px 0; }
-.s-mod-sub { font-size: 13px; color: var(--muted); margin:0; }
-.s-mod-page { display: none; }
-.s-mod-page.active { display: block; }
-.s-field { margin-bottom: 18px; }
-.s-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-.s-field input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; color: var(--text); background: var(--bg); outline: none; transition: border-color 0.2s; }
-.s-field input:focus { border-color: var(--accent); }
-
-.staff-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-top: 20px; }
-.card-menu-btn { position: absolute; top: 10px; right: 10px; background: var(--surface2); border: 1px solid var(--border); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted); cursor: pointer; z-index: 10; transition: all 0.2s; }
-.card-menu-btn:hover { background: var(--border); color: var(--text); }
-.card-dropdown { position: absolute; top: 42px; right: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-md); z-index: 100; display: none; min-width: 160px; overflow: hidden; text-align: left; }
-.card-dropdown.active { display: block !important; }
-.card-dropdown-item { padding: 10px 14px; font-size: 13px; color: var(--text); cursor: pointer; display: flex !important; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: var(--surface); transition: var(--transition); }
-.card-dropdown-item:last-child { border-bottom: none; }
-.card-dropdown-item:hover { background: var(--surface2); color: var(--accent); }
-</style>
-
-<script>
-  document.addEventListener('DOMContentLoaded', loadSavedStaff);
-  
-  let selectedFiles = [];
-  window.currentEditStaff = "";
-  let allStaff = [];
-
-  function handleFileSelect(event) {
-    selectedFiles = Array.from(event.target.files);
-    const preview = document.getElementById('selected-files-preview');
-    preview.innerHTML = '';
-    selectedFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        const d = document.createElement('div');
-        d.style = "position:relative; display:inline-block; width:60px; height:60px; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb; margin:0 10px 10px 0; vertical-align:top;";
-        d.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
-        preview.appendChild(d);
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function uploadStaffPhotos() {
-    const nameInput = document.getElementById('staff-name-input').value.trim();
-    const emailInput = document.getElementById('staff-email-input').value.trim();
-    const phoneInput = document.getElementById('staff-phone-input').value.trim();
-    const addressInput = document.getElementById('staff-address-input').value.trim();
-    
-    // Collect Communication Data
-    const commData = [];
-    document.querySelectorAll('.comm-group').forEach(group => {
-      const gName = group.querySelector('.comm-name').value.trim();
-      const gPhone = group.querySelector('.comm-phone').value.trim();
-      if(gName || gPhone) commData.push({name: gName, phone: gPhone});
-    });
-
-    const statusEl = document.getElementById('upload-status');
-    const originalNameInput = document.getElementById('staff-original-name');
-    const originalName = originalNameInput ? originalNameInput.value : "";
-    const isEditMode = originalName !== "";
-    
-    // Check if we have photos (either newly selected or already existing)
-    const hasExistingPhotos = !!document.getElementById('existing-files-preview').querySelector('img');
-    const hasSelectedFiles = selectedFiles.length > 0;
-
-    if (!nameInput) { 
-      statusEl.style.color="#ef4444"; 
-      statusEl.innerText="❌ Please provide a staff name."; 
-      return; 
-    }
-    
-    // Aggressive Bypass: If we are UPDATING, don't require more photos. 
-    if (!isEditMode) {
-        if (!hasSelectedFiles && !hasExistingPhotos) {
-          statusEl.style.color="#ef4444"; 
-          statusEl.innerText="❌ Please select at least 1 photo."; 
-          return; 
-        }
+  <style>
+    .s-back {
+      display: inline-block;
+      background: none;
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      margin-bottom: 24px;
+      transition: all 0.2s;
+      text-decoration: none;
     }
 
-    statusEl.style.color="#2563eb"; 
-    statusEl.innerText= isEditMode ? "⏳ Updating profile..." : "⏳ Creating profile...";
-    document.getElementById('submit-upload-btn').disabled=true;
-    
-    const fd = new FormData();
-    fd.append('staff_name', nameInput);
-    if (isEditMode) {
-      fd.append('is_update', 'true');
-      fd.append('original_name', originalName);
+    .s-back:hover {
+      border-color: var(--accent);
+      color: var(--accent);
     }
-    fd.append('email', emailInput);
-    fd.append('phone', phoneInput);
-    fd.append('address', addressInput);
-    fd.append('communication', JSON.stringify(commData));
-    selectedFiles.forEach(f => fd.append('photos', f));
-    
-    try {
-      const res = await fetch('/api/upload_staff', {method:'POST', body:fd});
-      const data = await res.json();
-      if (data.success) {
-        statusEl.style.color="#10b981"; statusEl.innerText="✅ Profile Saved successfully.";
-        setTimeout(() => { closeStaffCreate(); loadSavedStaff(); }, 1500);
-      } else { statusEl.style.color="#ef4444"; statusEl.innerText="❌ "+data.error; }
-    } catch (e) { statusEl.style.color="#ef4444"; statusEl.innerText="❌ Network error."; }
-    document.getElementById('submit-upload-btn').disabled=false;
-  }
 
-  function openStaffCreate() {
-    clearStaffForm();
-    document.getElementById('staff-original-name').value = "";
-    document.getElementById('staff-form-title').innerText = "Create New Staff";
-    document.getElementById('submit-upload-btn').innerText = "Create Staff Profile";
-    document.getElementById('delete-profile-btn').style.display = "none";
-    document.getElementById('mod-upload').classList.remove('active');
-    document.getElementById('mod-staff-create').classList.add('active');
-  }
+    .s-mod-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text);
+      margin: 0 0 6px 0;
+    }
 
-  function clearStaffForm() {
-    selectedFiles = [];
-    document.getElementById('staff-name-input').value = "";
-    document.getElementById('staff-email-input').value = "";
-    document.getElementById('staff-phone-input').value = "";
-    document.getElementById('staff-address-input').value = "";
-    document.getElementById('comm-groups-container').innerHTML = "";
-    document.getElementById('existing-photos-container').style.display = "none";
-    document.getElementById('selected-files-preview').innerHTML = '';
-    document.getElementById('upload-status').innerText = "";
-  }
-  
-  function closeStaffCreate() {
-    document.getElementById('mod-staff-create').classList.remove('active');
-    document.getElementById('mod-upload').classList.add('active');
-  }
+    .s-mod-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0;
+    }
 
-  function addCommGroup(initialData = null) {
-    const container = document.getElementById('comm-groups-container');
-    const div = document.createElement('div');
-    div.className = 'comm-group';
-    div.style = "display:grid; grid-template-columns:1fr 1fr 34px; gap:10px; margin-bottom:10px; align-items:flex-end;";
-    div.innerHTML = `
+    .s-mod-page {
+      display: none;
+    }
+
+    .s-mod-page.active {
+      display: block;
+    }
+
+    .s-field {
+      margin-bottom: 18px;
+    }
+
+    .s-field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .s-field input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .s-field input:focus {
+      border-color: var(--accent);
+    }
+
+    .staff-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .card-menu-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s;
+    }
+
+    .card-menu-btn:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .card-dropdown {
+      position: absolute;
+      top: 42px;
+      right: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow-md);
+      z-index: 100;
+      display: none;
+      min-width: 160px;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .card-dropdown.active {
+      display: block !important;
+    }
+
+    .card-dropdown-item {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      display: flex !important;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      transition: var(--transition);
+    }
+
+    .card-dropdown-item:last-child {
+      border-bottom: none;
+    }
+
+    .card-dropdown-item:hover {
+      background: var(--surface2);
+      color: var(--accent);
+    }
+
+    .view-btn.active {
+      background: var(--surface) !important;
+      color: var(--accent) !important;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .staff-table-row {
+      border-bottom: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+
+    .staff-table-row:hover {
+      background: var(--surface);
+    }
+
+    .staff-table-row:last-child {
+      border-bottom: none;
+    }
+
+    .inline-input {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: inherit;
+      font-family: inherit;
+      width: 100%;
+      transition: all 0.2s;
+    }
+
+    .inline-input:hover {
+      border-color: var(--border);
+      background: var(--bg);
+    }
+
+    .inline-input:focus {
+      border-color: var(--accent);
+      background: var(--bg);
+      outline: none;
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .page-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .page-btn.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    .page-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .secondary-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .secondary-btn:hover {
+      background: var(--surface);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .member-summary-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 22px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .member-summary-section {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 12px;
+      margin-bottom: 18px;
+    }
+
+    .member-summary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+      border-color: var(--accent);
+    }
+
+    .member-summary-label {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .member-summary-value {
+      font-size: 24px;
+      line-height: 1;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .pagination-info {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .rows-per-page {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .rows-per-page select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    /* 3-dot menu styles */
+    .action-menu { position: relative; display: inline-block; }
+    .action-dots { background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; padding: 4px 10px; border-radius: 6px; transition: all 0.2s; }
+    .action-dots:hover { background: var(--surface); color: var(--text); }
+    .action-dropdown { position: absolute; right: 0; top: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-md); z-index: 100; display: none; min-width: 140px; overflow: hidden; }
+    .action-dropdown.active { display: block; }
+    .action-item { padding: 10px 14px; font-size: 13px; color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+    .action-item:hover { background: var(--surface2); color: var(--accent); }
+    .action-item.danger { color: var(--red); }
+    .action-item.danger:hover { background: var(--error-bg); }
+
+    /* Toggle Switch */
+    .switch { position: relative; display: inline-block; width: 34px; height: 18px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .4s; border-radius: 18px; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--accent); }
+    input:checked + .slider:before { transform: translateX(16px); }
+
+    /* Radio Container */
+    .radio-container { display: flex; align-items: center; position: relative; padding-left: 30px; cursor: pointer; user-select: none; }
+    .radio-container input { position: absolute; opacity: 0; cursor: pointer; }
+    .radio-mark { position: absolute; top: 0; left: 0; height: 18px; width: 18px; background-color: var(--surface2); border: 2px solid var(--border); border-radius: 50%; }
+    .radio-container:hover input ~ .radio-mark { border-color: var(--accent); }
+    .radio-container input:checked ~ .radio-mark { background-color: white; border-color: var(--accent); border-width: 5px; }
+  </style>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', loadSavedStaff);
+
+    let selectedFiles = [];
+    window.currentEditStaff = "";
+    let allStaff = [];
+    let currentView = 'grid'; // Default view
+    let currentPage = 1;
+    let pageSize = 10;
+    let isSummaryHidden = false;
+
+    function escapeSingleQuotedJs(value) {
+      return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function memberKey(name) {
+      return encodeURIComponent(String(name ?? '')).replace(/%/g, '_');
+    }
+
+    function parseCommunicationData(rawCommunication) {
+      if (!rawCommunication) return [];
+      if (Array.isArray(rawCommunication)) return rawCommunication;
+      if (typeof rawCommunication === 'string') {
+        try { return JSON.parse(rawCommunication.replace(/'/g, '"')); }
+        catch (_) { return []; }
+      }
+      return [];
+    }
+
+    function collectCommunicationData() {
+      const commData = [];
+      document.querySelectorAll('.comm-group').forEach(group => {
+        const gName = group.querySelector('.comm-name').value.trim();
+        const gPhone = group.querySelector('.comm-phone').value.trim();
+        if (gName || gPhone) commData.push({ name: gName, phone: gPhone });
+      });
+      return commData;
+    }
+
+    function syncStaffInMemory(originalName, updates) {
+      const idx = allStaff.findIndex(s => s.name === originalName);
+      if (idx === -1) return;
+      allStaff[idx] = { ...allStaff[idx], ...updates };
+    }
+
+    function ensurePrimaryCommGroup() {
+      const container = document.getElementById('comm-groups-container');
+      let primary = container.querySelector('.comm-group[data-auto-primary="true"]');
+      if (!primary) {
+        primary = document.createElement('div');
+        primary.className = 'comm-group';
+        primary.dataset.autoPrimary = 'true';
+        primary.style = "display:grid; grid-template-columns:1fr 1fr 34px; gap:10px; margin-bottom:10px; align-items:flex-end;";
+        primary.innerHTML = `
       <div class="s-field" style="margin:0;">
         <label style="font-size:11px;">Name</label>
-        <input type="text" class="comm-name" placeholder="Contact Person" value="${initialData?.name || ''}" style="padding:6px 10px; font-size:12px;">
+        <input type="text" class="comm-name" placeholder="Contact Person" style="padding:6px 10px; font-size:12px;" readonly>
       </div>
       <div class="s-field" style="margin:0;">
         <label style="font-size:11px;">Phone</label>
-        <input type="text" class="comm-phone" placeholder="Phone No" value="${initialData?.phone || ''}" style="padding:6px 10px; font-size:12px;">
+        <input type="text" class="comm-phone" placeholder="+1..." style="padding:6px 10px; font-size:12px;" readonly>
       </div>
-      <button type="button" onclick="this.parentElement.remove()" style="background:#fee2e2; border:1px solid #fecaca; color:#ef4444; border-radius:6px; height:31px; font-size:14px; cursor:pointer;">✕</button>
+      <span title="Auto-synced from Member Name/Phone" style="display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted); margin-top:20px;">🔒</span>
     `;
-    container.appendChild(div);
-  }
+        container.prepend(primary);
+      }
+      return primary;
+    }
 
-  async function loadSavedStaff() {
-    const gallery = document.getElementById('saved-staff-gallery');
-    gallery.innerHTML = '<span style="color:#6b7280;font-size:12px;">Loading...</span>';
-    try {
-      const res = await fetch('/api/staff_profiles');
-      const data = await res.json();
-      allStaff = data.profiles || [];
-      renderStaffCards(allStaff);
-    } catch (e) { gallery.innerHTML='<span style="color:#ef4444;">Failed to load.</span>'; }
-  }
+    function syncPrimaryCommFromMemberFields() {
+      const primary = ensurePrimaryCommGroup();
+      const memberName = document.getElementById('staff-name-input').value.trim();
+      const memberPhone = document.getElementById('staff-phone-input').value.trim();
+      primary.querySelector('.comm-name').value = memberName;
+      primary.querySelector('.comm-phone').value = memberPhone;
+    }
 
-  function renderStaffCards(profiles) {
-    const gallery = document.getElementById('saved-staff-gallery');
-    if (!profiles.length) { gallery.innerHTML='<span style="color:#6b7280;">No matches found.</span>'; return; }
-    gallery.innerHTML = profiles.map(p=>`
-      <div style="background: var(--bg); border:1px solid var(--border); border-radius:10px; padding:18px 14px; text-align:center; position:relative; cursor:pointer;" id="card-${p.name}" onclick="openStaffEdit('${p.name}')">
-        <button class="card-menu-btn" onclick="toggleCardDropdown(event, '${p.name}')">⋮</button>
-        <div class="card-dropdown" id="dropdown-${p.name}">
-          <div class="card-dropdown-item" onclick="openStaffEdit('${p.name}')"><span>👁️</span> View Profile</div>
-          <div class="card-dropdown-item" onclick="toggleStaffStatus('${p.name}')">
-            <span>${p.status==='active'?'🚫':'✅'}</span> ${p.status==='active'?'Deactivate':'Activate'} Profile
-          </div>
+    function initializeCommunicationGroups(rawCommunication) {
+      const memberName = document.getElementById('staff-name-input').value.trim();
+      const memberPhone = document.getElementById('staff-phone-input').value.trim();
+      const normalizedName = memberName.toLowerCase();
+      const normalizedPhone = memberPhone;
+      const comms = parseCommunicationData(rawCommunication);
+      const manualContacts = comms.filter(c => {
+        const cName = String(c?.name || '').trim();
+        const cPhone = String(c?.phone || '').trim();
+        if (!cName && !cPhone) return false;
+        return !(cName.toLowerCase() === normalizedName && cPhone === normalizedPhone);
+      });
+
+      const container = document.getElementById('comm-groups-container');
+      container.innerHTML = '';
+      syncPrimaryCommFromMemberFields();
+      manualContacts.forEach(c => addCommGroup(c));
+    }
+
+    function handleMemberPrimaryFieldChange() {
+      syncPrimaryCommFromMemberFields();
+      autoSaveMember();
+    }
+
+    function renderMemberSummary() {
+      const totalMembers = allStaff.length;
+      const activeMembers = allStaff.filter(p => (p.status || '').toLowerCase() === 'active').length;
+      const inactiveMembers = allStaff.filter(p => (p.status || '').toLowerCase() !== 'active').length;
+
+      document.getElementById('summary-total-members').innerText = totalMembers;
+      document.getElementById('summary-active-members').innerText = activeMembers;
+      document.getElementById('summary-inactive-members').innerText = inactiveMembers;
+    }
+
+    function toggleSummaryCards() {
+      isSummaryHidden = !isSummaryHidden;
+      const section = document.getElementById('member-summary-section');
+      const btn = document.getElementById('toggle-summary-btn');
+      const controlsRow = document.getElementById('member-controls-row');
+
+      section.style.display = isSummaryHidden ? 'none' : 'grid';
+      controlsRow.style.marginTop = isSummaryHidden ? '10px' : '0';
+      btn.innerHTML = isSummaryHidden
+        ? '<span>⌄</span> Show Summary'
+        : '<span>⌃</span> Hide Summary';
+    }
+
+    function setPageSize(val) {
+      pageSize = parseInt(val);
+      currentPage = 1;
+      renderData();
+    }
+
+    function changeView(view) {
+      currentView = view;
+      document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('btn-view-' + view).classList.add('active');
+
+      document.querySelectorAll('.view-container').forEach(c => c.style.display = 'none');
+      if (view === 'grid') {
+        document.getElementById('saved-staff-gallery').style.display = 'grid';
+      } else {
+        document.getElementById('saved-staff-list').style.display = 'block';
+      }
+      renderData();
+    }
+
+    function renderData() {
+      renderMemberSummary();
+      const q = document.getElementById('staff-search-input').value.toLowerCase();
+      const filtered = allStaff.filter(p => p.name.toLowerCase().includes(q) || (p.phone && p.phone.includes(q)) || (p.email && p.email.toLowerCase().includes(q)));
+
+      const totalPages = Math.ceil(filtered.length / pageSize);
+      if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+
+      const startIndex = (currentPage - 1) * pageSize;
+      const paginated = filtered.slice(startIndex, startIndex + pageSize);
+
+      if (currentView === 'grid') {
+        renderStaffCards(paginated);
+      } else {
+        renderStaffTable(paginated);
+      }
+      renderPagination(filtered.length);
+    }
+
+    function renderPagination(totalItems) {
+      const container = document.getElementById('pagination-container');
+      const totalPages = Math.ceil(totalItems / pageSize);
+
+      if (totalItems === 0) {
+        container.innerHTML = '';
+        return;
+      }
+
+      const startItem = (currentPage - 1) * pageSize + 1;
+      const endItem = Math.min(currentPage * pageSize, totalItems);
+
+      container.innerHTML = `
+      <div class="pagination-info">
+        <span>Showing ${startItem} - ${endItem} of ${totalItems} members</span>
+        <div class="rows-per-page">
+          <span>Rows per page:</span>
+          <select onchange="setPageSize(this.value)">
+            <option value="10" ${pageSize === 10 ? 'selected' : ''}>10</option>
+            <option value="20" ${pageSize === 20 ? 'selected' : ''}>20</option>
+            <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+          </select>
         </div>
-        <div style="width:72px; height:72px; margin:0 auto 10px; border-radius:50%; overflow:hidden; border:2px solid ${p.status==='active'?'var(--accent)':'var(--muted)'}; opacity:${p.status==='active'?'1':'0.5'};">
-          <img src="${p.thumbnail || '/static/img/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="margin-right:8px;">Page ${currentPage} of ${totalPages || 1}</span>
+        <button class="page-btn" onclick="changePage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
+        <button class="page-btn" onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+        <button class="page-btn" onclick="changePage(${currentPage + 1})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>›</button>
+        <button class="page-btn" onclick="changePage(${totalPages})" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>»</button>
+      </div>
+    `;
+    }
+
+    function changePage(p) {
+      currentPage = p;
+      renderData();
+    }
+
+    function handleFileSelect(event) {
+      selectedFiles = Array.from(event.target.files);
+      if (currentEditStaff !== "") {
+          autoSaveMember(true); // Auto-upload photos if in edit mode
+      }
+      const preview = document.getElementById('selected-files-preview');
+      preview.innerHTML = '';
+      selectedFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const d = document.createElement('div');
+          d.style = "position:relative; display:inline-block; width:60px; height:60px; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb; margin:0 10px 10px 0; vertical-align:top;";
+          d.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+          preview.appendChild(d);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadStaffPhotos() {
+      const nameInput = document.getElementById('staff-name-input').value.trim();
+      const emailInput = document.getElementById('staff-email-input').value.trim();
+      const phoneInput = document.getElementById('staff-phone-input').value.trim();
+      const addressInput = document.getElementById('staff-address-input').value.trim();
+
+      syncPrimaryCommFromMemberFields();
+      const commData = collectCommunicationData();
+
+      const statusEl = document.getElementById('upload-status');
+      const isEditMode = currentEditStaff !== "";
+      const originalName = isEditMode ? currentEditStaff : "";
+
+      if (!nameInput) { statusEl.style.color = "#ef4444"; statusEl.innerText = "❌ Please provide a member name."; return; }
+      if (!isEditMode && !selectedFiles.length) { statusEl.style.color = "#ef4444"; statusEl.innerText = "❌ Please select at least 1 photo."; return; }
+      statusEl.style.color = "#2563eb"; statusEl.innerText = isEditMode ? "⏳ Updating profile..." : "⏳ Creating profile...";
+      document.getElementById('submit-upload-btn').disabled = true;
+
+      const fd = new FormData();
+      fd.append('staff_name', nameInput);
+      if (isEditMode) {
+        fd.append('is_update', 'true');
+        fd.append('original_name', originalName);
+      }
+      fd.append('email', emailInput);
+      fd.append('phone', phoneInput);
+      fd.append('address', addressInput);
+      fd.append('communication', JSON.stringify(commData));
+      selectedFiles.forEach(f => fd.append('photos', f));
+
+      try {
+        const res = await fetch('/api/upload_staff', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+          if (isEditMode) {
+            syncStaffInMemory(originalName, {
+              name: nameInput,
+              email: emailInput,
+              phone: phoneInput,
+              address: addressInput,
+              communication: JSON.stringify(commData),
+            });
+            renderData();
+          }
+          statusEl.style.color = "#10b981"; statusEl.innerText = "✅ Profile Saved successfully.";
+          setTimeout(() => { closeStaffCreate(); loadSavedStaff(); }, 1500);
+        } else { statusEl.style.color = "#ef4444"; statusEl.innerText = "❌ " + data.error; }
+      } catch (e) { statusEl.style.color = "#ef4444"; statusEl.innerText = "❌ Network error."; }
+      document.getElementById('submit-upload-btn').disabled = false;
+    }
+
+    async function autoSaveMember(withPhotos = false) {
+      if (currentEditStaff === "") return;
+      const nameInput = document.getElementById('staff-name-input').value.trim();
+      const emailInput = document.getElementById('staff-email-input').value.trim();
+      const phoneInput = document.getElementById('staff-phone-input').value.trim();
+      const addressInput = document.getElementById('staff-address-input').value.trim();
+      syncPrimaryCommFromMemberFields();
+      const commData = collectCommunicationData();
+
+      const statusEl = document.getElementById('upload-status');
+      statusEl.style.color = "var(--accent)"; 
+      statusEl.innerText = withPhotos ? "⏳ Uploading photos..." : "⏳ Saving changes...";
+
+      const fd = new FormData();
+      fd.append('staff_name', nameInput);
+      fd.append('is_update', 'true');
+      fd.append('original_name', currentEditStaff);
+      fd.append('email', emailInput);
+      fd.append('phone', phoneInput);
+      fd.append('address', addressInput);
+      fd.append('communication', JSON.stringify(commData));
+      if (withPhotos) {
+          selectedFiles.forEach(f => fd.append('photos', f));
+      }
+
+      try {
+        const res = await fetch('/api/upload_staff', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+          statusEl.innerText = "✓ Saved";
+          const previousName = currentEditStaff;
+          syncStaffInMemory(previousName, {
+            name: nameInput,
+            email: emailInput,
+            phone: phoneInput,
+            address: addressInput,
+            communication: JSON.stringify(commData),
+          });
+          renderData();
+          if (nameInput !== currentEditStaff) {
+              window.currentEditStaff = nameInput;
+              document.getElementById('staff-original-name').value = nameInput;
+          }
+          if (withPhotos) {
+              selectedFiles = [];
+              document.getElementById('selected-files-preview').innerHTML = "";
+              openStaffEdit(currentEditStaff); // Refresh photos
+          }
+          setTimeout(() => { if(statusEl.innerText === "✓ Saved") statusEl.innerText = ""; }, 2000);
+        }
+      } catch (e) { console.error("Auto-save failed", e); }
+    }
+
+    function openStaffCreate() {
+      currentEditStaff = "";
+      clearStaffForm(); 
+      document.getElementById('edit-actions-container').style.display = "block";
+      document.getElementById('staff-form-title').innerText = "Create New Member";
+      document.getElementById('submit-upload-btn').innerText = "Create Member Profile";
+      document.getElementById('delete-profile-btn').style.display = "none";
+      document.getElementById('mod-upload').classList.remove('active');
+      document.getElementById('mod-staff-create').classList.add('active');
+    }
+
+    function clearStaffForm() {
+      selectedFiles = [];
+      document.getElementById('staff-name-input').value = "";
+      document.getElementById('staff-email-input').value = "";
+      document.getElementById('staff-phone-input').value = "";
+      document.getElementById('staff-address-input').value = "";
+      document.getElementById('comm-groups-container').innerHTML = "";
+      syncPrimaryCommFromMemberFields();
+      document.getElementById('existing-photos-container').style.display = "none";
+      document.getElementById('selected-files-preview').innerHTML = '';
+      document.getElementById('upload-status').innerText = "";
+    }
+
+    function closeStaffCreate() {
+      document.getElementById('mod-staff-create').classList.remove('active');
+      document.getElementById('mod-upload').classList.add('active');
+    }
+
+    function addCommGroup(initialData = null) {
+      const container = document.getElementById('comm-groups-container');
+      const div = document.createElement('div');
+      div.className = 'comm-group';
+      div.style = "display:grid; grid-template-columns:1fr 1fr 34px; gap:10px; margin-bottom:10px; align-items:flex-end;";
+      div.innerHTML = `
+      <div class="s-field" style="margin:0;">
+        <label style="font-size:11px;">Name</label>
+        <input type="text" class="comm-name" placeholder="Contact Person" value="${initialData?.name || ''}" style="padding:6px 10px; font-size:12px;" onchange="autoSaveMember()">
+      </div>
+      <div class="s-field" style="margin:0;">
+        <label style="font-size:11px;">Phone</label>
+        <input type="text" class="comm-phone" placeholder="+1..." value="${initialData?.phone || ''}" style="padding:6px 10px; font-size:12px;" onchange="autoSaveMember()">
+      </div>
+      <button type="button" onclick="this.parentElement.remove(); autoSaveMember();" style="background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; align-self:center; margin-top:20px;">✕</button>
+    `;
+      container.appendChild(div);
+    }
+
+    async function loadSavedStaff() {
+      const gallery = document.getElementById('saved-staff-gallery');
+      const tableBody = document.getElementById('staff-table-body');
+      gallery.innerHTML = '<span style="color:#6b7280;font-size:12px;">Loading...</span>';
+      tableBody.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:var(--muted); font-size:12px;">Loading...</td></tr>';
+      try {
+        const res = await fetch('/api/staff_profiles');
+        const data = await res.json();
+        allStaff = data.profiles || [];
+        renderData();
+      } catch (e) {
+        gallery.innerHTML = '<span style="color:#ef4444;">Failed to load.</span>';
+        tableBody.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:var(--error-bg);">Failed to load.</td></tr>';
+      }
+    }
+
+    function renderStaffTable(profiles) {
+      const tableBody = document.getElementById('staff-table-body');
+      if (!profiles.length) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="padding:40px; text-align:center; color:var(--muted); font-size:13px;">No members found.</td></tr>';
+        return;
+      }
+
+      tableBody.innerHTML = profiles.map(p => {
+        const escapedName = escapeSingleQuotedJs(p.name);
+        const key = memberKey(p.name);
+        const staffId = Number.isInteger(p.id) ? p.id : 'null';
+        return `
+      <tr class="staff-table-row" onclick="openStaffEdit('${escapedName}', ${staffId})" style="cursor:pointer;">
+        <td style="padding:14px 20px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; border-radius:50%; overflow:hidden; border:2px solid ${p.status === 'active' ? 'var(--accent)' : 'var(--muted)'}; flex-shrink:0; background:var(--surface2);">
+              <img src="${p.thumbnail || '/static/img/default-avatar.png'}" 
+                   onerror="this.src='https://www.w3schools.com/howto/img_avatar.png'"
+                   style="width:100%; height:100%; object-fit:cover;">
+            </div>
+            <div style="flex:1;">
+              <div style="font-weight:700; color:var(--text); padding-left:9px; font-size:14px;">${p.name}</div>
+              <div style="font-size:11px; color: var(--muted); padding-left:9px;">${p.photo_count} Reference Photos</div>
+            </div>
+          </div>
+        </td>
+        <td style="padding:14px 20px;">
+          <input type="text" class="inline-input" value="${p.phone || ''}" placeholder="Enter Phone"
+                 onclick="event.stopPropagation()"
+                 onchange="updateMemberInline('${escapedName}', 'phone', this.value)">
+        </td>
+        <td style="padding:14px 20px;">
+          <input type="email" class="inline-input" value="${p.email || ''}" placeholder="Enter Email"
+                 onclick="event.stopPropagation()"
+                 onchange="updateMemberInline('${escapedName}', 'email', this.value)">
+        </td>
+        <td style="padding:14px 20px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <label class="switch" onclick="event.stopPropagation()">
+              <input type="checkbox" ${p.status === 'active' ? 'checked' : ''} onchange="toggleStaffStatus('${escapedName}')">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size:10px; font-weight:700; color: ${p.status === 'active' ? 'var(--green)' : 'var(--muted)'}; width:45px;">${p.status.toUpperCase()}</span>
+          </div>
+        </td>
+        <td style="padding:14px 20px; text-align:right;">
+          <div class="action-menu" onclick="event.stopPropagation()">
+            <button class="action-dots" onclick="toggleActionMenu(event, '${key}')">⋮</button>
+            <div class="action-dropdown" id="action-list-${key}">
+              <div class="action-item" onclick="openStaffEdit('${escapedName}', ${staffId})"><span>👁️</span> Details</div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+      }).join('');
+    }
+
+    async function updateMemberInline(originalName, field, value) {
+      const staff = allStaff.find(s => s.name === originalName);
+      if (!staff) return;
+
+      const fd = new FormData();
+      // We send all existing data + the updated field to reuse the upload_staff endpoint
+      fd.append('is_update', 'true');
+      fd.append('original_name', originalName);
+
+      // Set field values (either new value or existing)
+      fd.append('staff_name', field === 'staff_name' ? value : staff.name);
+      fd.append('email', field === 'email' ? value : (staff.email || ''));
+      fd.append('phone', field === 'phone' ? value : (staff.phone || ''));
+      fd.append('address', staff.address || ''); // Keep address
+      fd.append('communication', staff.communication || '[]');
+
+      try {
+        const res = await fetch('/api/upload_staff', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+          // Update local data to reflect changes (especially if name changed)
+          if (field === 'staff_name') staff.name = value;
+          else if (field === 'email') staff.email = value;
+          else if (field === 'phone') staff.phone = value;
+          renderData();
+
+          // Show a brief success indicator if needed, or just silent update
+          console.log("Auto-saved:", field, "=", value);
+          // If name changed, we need to refresh to update the 'originalName' references in other buttons
+          if (field === 'staff_name') loadSavedStaff();
+        } else {
+          alert("Save failed: " + data.error);
+          loadSavedStaff(); // Revert on UI
+        }
+      } catch (e) {
+        alert("Network error during auto-save");
+      }
+    }
+
+    async function deleteStaffProfileByName(name) {
+      if (!confirm('Delete entire profile for ' + name + '?')) return;
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+      if ((await res.json()).success) { loadSavedStaff(); }
+    }
+
+    function renderStaffCards(profiles) {
+      const gallery = document.getElementById('saved-staff-gallery');
+      if (!profiles.length) { gallery.innerHTML = '<span style="color:#6b7280;">No matches found.</span>'; return; }
+      gallery.innerHTML = profiles.map(p => {
+        const escapedName = escapeSingleQuotedJs(p.name);
+        const key = memberKey(p.name);
+        const staffId = Number.isInteger(p.id) ? p.id : 'null';
+        return `
+      <div style="background: var(--bg); border:1px solid var(--border); border-radius:10px; padding:18px 14px; text-align:center; position:relative; cursor:pointer;" id="card-${key}" onclick="openStaffEdit('${escapedName}', ${staffId})">
+        <button class="card-menu-btn" onclick="toggleCardDropdown(event, '${key}')" style="top: 8px; right: 8px;">⋮</button>
+        <div class="card-dropdown" id="dropdown-${key}">
+          <div class="card-dropdown-item" onclick="openStaffEdit('${escapedName}', ${staffId})"><span>👁️</span> View Profile</div>
+        </div>
+        <div style="width:72px; height:72px; margin:0 auto 10px; border-radius:50%; overflow:hidden; border:2px solid ${p.status === 'active' ? 'var(--accent)' : 'var(--muted)'}; opacity:${p.status === 'active' ? '1' : '0.5'}; background:var(--surface2);">
+          <img src="${p.thumbnail || '/static/img/default-avatar.png'}" 
+               onerror="this.src='https://www.w3schools.com/howto/img_avatar.png'"
+               style="width:100%; height:100%; object-fit:cover;">
         </div>
         <div style="font-size:14px; font-weight:600; color: var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${p.name}</div>
-        <div style="font-size:11px; color: var(--muted); margin-top:2px;">${p.phone || (p.email || p.photo_count+' Photos')}</div>
-        <div style="margin-top:8px;">
-          <span style="font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:10px; background:${p.status==='active'?'var(--success-bg)':'var(--surface2)'}; color:${p.status==='active'?'var(--green)':'var(--muted)'};">
-            ${p.status}
-          </span>
+        <div style="font-size:11px; color: var(--muted); margin-top:2px;">${p.phone || (p.email || p.photo_count + ' Photos')}</div>
+        <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:12px;">
+            <div onclick="event.stopPropagation()">
+                <label class="switch">
+                  <input type="checkbox" ${p.status === 'active' ? 'checked' : ''} onchange="toggleStaffStatus('${escapedName}')">
+                  <span class="slider"></span>
+                </label>
+            </div>
+            <span style="font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:10px; background:${p.status === 'active' ? 'var(--success-bg)' : 'var(--surface2)'}; color:${p.status === 'active' ? 'var(--green)' : 'var(--muted)'};">
+              ${p.status}
+            </span>
         </div>
-      </div>`).join('');
-  }
+      </div>`;
+      }).join('');
+    }
 
-  function filterStaff() {
-    const q = document.getElementById('staff-search-input').value.toLowerCase();
-    const filtered = allStaff.filter(p => p.name.toLowerCase().includes(q) || (p.phone && p.phone.includes(q)));
-    renderStaffCards(filtered);
-  }
+    function filterStaff() {
+      renderData();
+    }
 
-  function toggleCardDropdown(e, name) {
+    function toggleCardDropdown(e, key) {
+      e.stopPropagation();
+      document.querySelectorAll('.card-dropdown').forEach(d => { if (d.id !== 'dropdown-' + key) d.classList.remove('active'); });
+      document.getElementById('dropdown-' + key).classList.toggle('active');
+    }
+
+    function toggleActionMenu(e, key) {
     e.stopPropagation();
-    document.querySelectorAll('.card-dropdown').forEach(d => { if(d.id !== 'dropdown-'+name) d.classList.remove('active'); });
-    document.getElementById('dropdown-'+name).classList.toggle('active');
+    document.querySelectorAll('.action-dropdown').forEach(d => { if(d.id !== 'action-list-'+key) d.classList.remove('active'); });
+    document.getElementById('action-list-'+key).classList.toggle('active');
   }
 
-  window.addEventListener('click', () => { document.querySelectorAll('.card-dropdown').forEach(d => d.classList.remove('active')); });
+  window.addEventListener('click', () => { 
+    document.querySelectorAll('.card-dropdown, .action-dropdown').forEach(d => d.classList.remove('active')); 
+  });
 
-  async function toggleStaffStatus(name) {
-    try {
-      const res = await fetch('/api/staff_profiles/'+encodeURIComponent(name)+'/toggle', {method:'POST'});
-      const data = await res.json();
-      if (data.success) {
-        const staff = allStaff.find(s => s.name === name);
-        if(staff) staff.status = data.new_status;
-        renderStaffCards(allStaff);
-      }
-    } catch(e) {}
-  }
+    async function toggleStaffStatus(name) {
+      try {
+        const res = await fetch('/api/staff_profiles/' + encodeURIComponent(name) + '/toggle', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          const staff = allStaff.find(s => s.name === name);
+          if (staff) staff.status = data.new_status;
+          renderData();
+        }
+      } catch (e) { }
+    }
 
-  async function openStaffEdit(name) {
-    clearStaffForm();
-    document.getElementById('staff-original-name').value = name;
-    document.getElementById('staff-form-title').innerText = "Edit Profile";
-    document.getElementById('submit-upload-btn').innerText = "Update Staff Profile";
-    document.getElementById('delete-profile-btn').style.display = "block";
-    document.getElementById('staff-name-input').value = name;
-    document.getElementById('upload-status').innerText = "Loading details...";
-    
-    document.getElementById('mod-upload').classList.remove('active');
-    document.getElementById('mod-staff-create').classList.add('active');
+    // Import/Export Functions
+    function openStaffImport() {
+      document.getElementById('import-modal').style.display = 'flex';
+      document.getElementById('import-status').innerText = "";
+      document.getElementById('import-filename').innerText = "";
+      document.getElementById('staff-import-file').value = "";
+    }
 
-    try {
-      const res = await fetch('/api/staff_profiles/'+encodeURIComponent(name));
-      const data = await res.json();
-      document.getElementById('upload-status').innerText = "";
+    function closeStaffImport() {
+      document.getElementById('import-modal').style.display = 'none';
+    }
+
+    document.getElementById('staff-import-file')?.addEventListener('change', (e) => {
+      document.getElementById('import-filename').innerText = e.target.files[0] ? e.target.files[0].name : "";
+    });
+
+    async function handleStaffImportSubmit() {
+      const fileInput = document.getElementById('staff-import-file');
+      const status = document.getElementById('import-status');
+      if (!fileInput.files[0]) { status.innerText = "❌ Please select a CSV file."; status.style.color = "#ef4444"; return; }
       
-      const emailVal = (data.staff.email === null || data.staff.email === undefined || data.staff.email === "undefined") ? "" : data.staff.email;
-      const phoneVal = (data.staff.phone === null || data.staff.phone === undefined || data.staff.phone === "undefined") ? "" : data.staff.phone;
-      const addressVal = (data.staff.address === null || data.staff.address === undefined || data.staff.address === "undefined") ? "" : data.staff.address;
+      status.innerText = "⏳ Importing members...";
+      status.style.color = "var(--accent)";
+      
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      
+      try {
+        const res = await fetch('/api/staff/import', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+          status.innerText = `✅ Imported ${data.count} members successfully!`;
+          status.style.color = "#10b981";
+          setTimeout(() => { closeStaffImport(); loadSavedStaff(); }, 2000);
+        } else {
+          status.innerText = "❌ " + data.error;
+          status.style.color = "#ef4444";
+        }
+      } catch (e) { status.innerText = "❌ Network error."; status.style.color = "#ef4444"; }
+    }
 
-      document.getElementById('staff-email-input').value = emailVal;
-      document.getElementById('staff-phone-input').value = phoneVal;
-      document.getElementById('staff-address-input').value = addressVal;
+    function downloadImportTemplate() {
+      // CSV escaping: double quotes are represented by two double quotes inside a quoted field
+      const csv = 'name,email,phone,address,image_url,communication_details\n' +
+                'Member Name,email@example.com,+123456789,"Address Detail, House No 1","https://example.com/photo.jpg","[{""name"":""Emergency"",""phone"":""911""}]"';
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'member_import_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
 
-      if (data.staff.communication) {
-        let comms = [];
-        try {
-          comms = typeof data.staff.communication === 'string' ? JSON.parse(data.staff.communication) : data.staff.communication;
-        } catch(e) { comms = []; }
-        if (Array.isArray(comms)) comms.forEach(c => addCommGroup(c));
+    function exportStaff() {
+      const q = document.getElementById('staff-search-input').value.toLowerCase();
+      const filteredCount = allStaff.filter(p => p.name.toLowerCase().includes(q) || (p.phone && p.phone.includes(q)) || (p.email && p.email.toLowerCase().includes(q))).length;
+      
+      document.getElementById('export-summary').innerText = `Exporting all ${filteredCount} members`;
+      document.getElementById('export-modal').style.display = 'flex';
+    }
+
+    function closeStaffExport() {
+      document.getElementById('export-modal').style.display = 'none';
+    }
+
+    function handleStaffExportSubmit() {
+      const format = document.querySelector('input[name="export-format"]:checked').value;
+      const q = document.getElementById('staff-search-input').value;
+      
+      let url = `/api/staff/export?format=${format}`;
+      if (q) url += `&q=${encodeURIComponent(q)}`;
+      
+      if (format === 'csv') {
+          // Send as .xlsx extension for user's requested 'Excel'
+          window.location.href = url + '&ext=xlsx';
+      } else {
+          window.open(url, '_blank');
       }
-      if (data.photos && data.photos.length > 0) {
-        document.getElementById('existing-photos-container').style.display = "block";
-        document.getElementById('existing-files-preview').innerHTML = data.photos.map(p=>`
+      closeStaffExport();
+    }
+
+    async function openStaffEdit(name, staffId = null) {
+      clearStaffForm();
+      window.currentEditStaff = name;
+      document.getElementById('staff-original-name').value = name;
+      document.getElementById('edit-actions-container').style.display = "none";
+      document.getElementById('staff-form-title').innerText = "Edit Profile";
+      document.getElementById('submit-upload-btn').innerText = "Update Member Profile";
+      document.getElementById('delete-profile-btn').style.display = "none";
+      document.getElementById('staff-name-input').value = name;
+      
+      // Switch Pages
+      document.getElementById('mod-upload').classList.remove('active');
+      document.getElementById('mod-staff-create').classList.add('active');
+      
+      document.getElementById('upload-status').innerText = "Loading details...";
+      try {
+        const detailsUrl = staffId !== null
+          ? '/api/staff_profiles/' + encodeURIComponent(name) + '?id=' + encodeURIComponent(staffId)
+          : '/api/staff_profiles/' + encodeURIComponent(name);
+        const res = await fetch(detailsUrl);
+        const data = await res.json();
+        document.getElementById('upload-status').innerText = "";
+        const loadedName = data?.staff?.name || name;
+        window.currentEditStaff = loadedName;
+        document.getElementById('staff-original-name').value = loadedName;
+        document.getElementById('staff-name-input').value = loadedName;
+        document.getElementById('staff-email-input').value = data.staff.email;
+        document.getElementById('staff-phone-input').value = data.staff.phone;
+        document.getElementById('staff-address-input').value = data.staff.address;
+        initializeCommunicationGroups(data.staff.communication);
+        if (data.photos && data.photos.length > 0) {
+          document.getElementById('existing-photos-container').style.display = "block";
+          document.getElementById('existing-files-preview').innerHTML = data.photos.map(p => `
           <div style="position:relative; display:inline-block; width:60px; height:60px; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb; margin:0 10px 10px 0;">
             <img src="${p.url}" style="width:100%; height:100%; object-fit:cover;">
             <button type="button" onclick="deleteStaffPhoto('${p.filename}')" style="position:absolute; top:4px; right:4px; width:20px; height:20px; background:rgba(239,68,68,0.9); color:white; border:none; border-radius:50%; font-size:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:5;">✕</button>
           </div>`).join('');
+        }
+      } catch (e) {
+        document.getElementById('upload-status').innerText = "❌ Error loading info";
       }
-    } catch (e) {
-      document.getElementById('upload-status').innerText = "❌ Error loading info";
     }
-  }
 
-  async function deleteStaffPhoto(filename) {
-    const original = document.getElementById('staff-original-name').value;
-    if (!confirm('Delete this photo?')) return;
-    const res = await fetch('/api/staff_profiles/'+encodeURIComponent(original)+'/'+encodeURIComponent(filename), {method:'DELETE'});
-    if ((await res.json()).success) openStaffEdit(original);
-  }
+    async function deleteStaffPhoto(filename) {
+      const original = document.getElementById('staff-original-name').value;
+      if (!confirm('Delete this photo?')) return;
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentEditStaff) + '/' + encodeURIComponent(filename), { method: 'DELETE' });
+      if ((await res.json()).success) openStaffEdit(currentEditStaff);
+    }
 
-  async function deleteStaffProfile() {
-    const original = document.getElementById('staff-original-name').value;
-    if (!confirm('Delete entire profile?')) return;
-    const res = await fetch('/api/staff_profiles/'+encodeURIComponent(original), {method:'DELETE'});
-    if ((await res.json()).success) { closeStaffCreate(); loadSavedStaff(); }
-  }
-</script>
-{% endblock %}
+    async function deleteStaffProfile() {
+      const original = document.getElementById('staff-original-name').value;
+      if (!confirm('Delete entire profile?')) return;
+      const res = await fetch('/api/staff_profiles/' + encodeURIComponent(currentEditStaff), { method: 'DELETE' });
+      if ((await res.json()).success) { closeStaffCreate(); loadSavedStaff(); }
+    }
+  </script>
+  {% endblock %}

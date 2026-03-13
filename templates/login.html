@@ -189,6 +189,19 @@
             font-weight: 500;
         }
     </style>
+    <script>
+        function togglePassword(id) {
+            const el = document.getElementById(id);
+            const btn = el.nextElementSibling;
+            if (el.type === 'password') {
+                el.type = 'text';
+                btn.innerText = 'HIDE';
+            } else {
+                el.type = 'password';
+                btn.innerText = 'SHOW';
+            }
+        }
+    </script>
 </head>
 
 <body>
@@ -211,9 +224,9 @@
         {% endif %}
 
         {% from 'macros/components.html' import form_group, button %}
-        <form method="POST" action="/login">
+        <form method="POST" action="/login" autocomplete="on">
             {{ form_group('Email Address', 'email', type='email', placeholder='name@company.com') }}
-            {{ form_group('Password', 'password', type='password', placeholder='Enter your password', id='password') }}
+            {{ form_group('Password', 'password', type='password', placeholder='Enter your password', id='password') | replace('type="password"', 'type="password" autocomplete="current-password"') }}
             {{ button('Sign In') }}
         </form>
 
@@ -224,4 +237,4 @@
 
 </body>
 
-</html>
+</html>

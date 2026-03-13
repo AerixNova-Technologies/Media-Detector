@@ -46,6 +46,10 @@
           {{ nav_tab('Live View', '📡', active=(active_page == 'live'), url='/live') }}
         {% endif %}
 
+        {% if perms.all or perms.staff_view or perms is not defined or not perms %}
+          {{ nav_tab('Member Directory', '👤', active=(sub_page == 'members'), url='/settings/members') }}
+        {% endif %}
+
         {% if perms.all or perms.attendance_view or perms is not defined or not perms %}
           {{ nav_tab('Attendance', '📅', active=(active_page == 'attendance'), url='/attendance') }}
         {% endif %}
@@ -110,16 +114,18 @@
           {% if sys_settings.show_breadcrumbs == 'true' %}
           <nav class="breadcrumbs" style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--muted);">
             <a href="/" style="text-decoration: none; color: var(--muted);">Home</a>
-            {% if active_page and active_page != 'dashboard' %}
-            <span>/</span>
-            {% if sub_page %}
-            <a href="/{{ active_page }}" style="text-decoration: none; color: var(--muted); text-transform: capitalize;">{{ active_page.replace('_', ' ') }}</a>
-            <span>/</span>
-            <span style="color: var(--text); text-transform: capitalize;">{{ sub_page.replace('_', ' ') }}</span>
-            {% else %}
-            <span style="color: var(--text); text-transform: capitalize;">{{ active_page.replace('_', ' ') }}</span>
-            {% endif %}
-            {% elif active_page == 'dashboard' %}
+            {% set path_parts = request.path.strip('/').split('/') %}
+            {% for part in path_parts if part %}
+              {% if part != 'dashboard' and not (active_page == 'members' and part == 'settings') %}
+                <span>/</span>
+                {% if not loop.last %}
+                  <a href="/{{ path_parts[:loop.index]|join('/') }}" style="text-decoration: none; color: var(--muted); text-transform: capitalize;">{{ part.replace('_', ' ') if part not in ['members', 'staff'] else 'Member Directory' }}</a>
+                {% else %}
+                  <span style="color: var(--text); text-transform: capitalize;">{{ part.replace('_', ' ') if part not in ['members', 'staff'] else 'Member Directory' }}</span>
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% if request.path == '/' %}
             <span>/</span>
             <span style="color: var(--text);">Dashboard</span>
             {% endif %}

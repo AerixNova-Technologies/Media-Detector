@@ -280,11 +280,11 @@ def _upload_folder() -> str:
 def api_upload_staff():
     """Upload reference photos for a named staff member."""
     if "staff_name" not in request.form:
-        return jsonify({"success": False, "error": "Staff name is required"})
+        return jsonify({"success": False, "error": "Member name is required"})
 
     staff_name = secure_filename(request.form["staff_name"])
     if not staff_name:
-        return jsonify({"success": False, "error": "Invalid staff name"})
+        return jsonify({"success": False, "error": "Invalid member name"})
 
     is_update = request.form.get("is_update") == "true"
     files = request.files.getlist("photos") if "photos" in request.files else []
@@ -384,14 +384,15 @@ def api_staff_profiles():
         rows = cur.fetchall()
         for row in rows:
             staff_name = row["name"]
-            staff_dir = os.path.join(upload_folder, staff_name)
+            safe_name = secure_filename(staff_name)
+            staff_dir = os.path.join(upload_folder, safe_name)
             photo_count = 0
             thumbnail_url = ""
             if os.path.exists(staff_dir) and os.path.isdir(staff_dir):
                 photos = [f for f in os.listdir(staff_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
                 photo_count = len(photos)
                 if photos:
-                    thumbnail_url = url_for("static", filename=f"uploads/{staff_name}/{photos[0]}")
+                    thumbnail_url = url_for("static", filename=f"uploads/{safe_name}/{photos[0]}")
             profiles.append({
                 "id":          row["id"],
                 "name":        staff_name,
@@ -419,8 +420,8 @@ def api_staff_profile(staff_name: str):
     GET  → list photos for one staff member
     DELETE → remove the entire staff profile folder
     """
-    staff_name = secure_filename(staff_name)
-    staff_dir  = os.path.join(_upload_folder(), staff_name)
+    safe_name = secure_filename(staff_name)
+    staff_dir = os.path.join(_upload_folder(), safe_name)
 
     if request.method == "DELETE":
         if os.path.isdir(staff_dir):
@@ -441,19 +442,44 @@ def api_staff_profile(staff_name: str):
 
     # GET
     if not os.path.isdir(staff_dir):
-        return jsonify({"error": "Staff not found"}), 404
-        
+        # Even if directory is missing (0 photos), we should still check the DB
+        pass
+
     staff_data = {"name": staff_name, "email": "", "phone": "", "address": "", "communication": ""}
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT email, phone, address, communication FROM staff_profiles WHERE name = %s", (staff_name,))
-        row = cur.fetchone()
+
+        requested_id = request.args.get("id", type=int)
+        if requested_id is not None:
+            cur.execute(
+                "SELECT name, email, phone, address, communication FROM staff_profiles WHERE id = %s",
+                (requested_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                cur.execute(
+                    "SELECT name, email, phone, address, communication FROM staff_profiles WHERE name = %s",
+                    (staff_name,),
+                )
+                row = cur.fetchone()
+        else:
+            cur.execute(
+                "SELECT name, email, phone, address, communication FROM staff_profiles WHERE name = %s",
+                (staff_name,),
+            )
+            row = cur.fetchone()
+
         if row:
+            resolved_name = row["name"] or staff_name
+            staff_data["name"] = resolved_name
             staff_data["email"] = row["email"] or ""
             staff_data["phone"] = row["phone"] or ""
             staff_data["address"] = row["address"] or ""
-            staff_data["communication"] = row["communication"] or "" 
+            staff_data["communication"] = row["communication"] or ""
+            safe_name = secure_filename(resolved_name)
+            staff_dir = os.path.join(_upload_folder(), safe_name)
             log.info("Loaded staff data with communication: %s", staff_data["communication"])
     except Exception as e:
         log.error("DB Error fetching single staff: %s", e)
@@ -461,14 +487,16 @@ def api_staff_profile(staff_name: str):
         if conn:
             conn.close()
 
-    photos = [
-        f for f in os.listdir(staff_dir)
-        if f.lower().endswith((".png", ".jpg", ".jpeg"))
-    ]
+    photos = []
+    if os.path.exists(staff_dir) and os.path.isdir(staff_dir):
+        photos = [
+            f for f in os.listdir(staff_dir)
+            if f.lower().endswith((".png", ".jpg", ".jpeg"))
+        ]
     urls = [
         {
             "filename": p,
-            "url": url_for("static", filename=f"uploads/{staff_name}/{p}"),
+            "url": url_for("static", filename=f"uploads/{safe_name}/{p}"),
         }
         for p in photos
     ]
@@ -599,3 +627,195 @@ def api_upload_branding():
     except Exception as e:
         log.error("Error uploading branding: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
+
+def download_image_from_url(url: str, dest_folder: str) -> str | None:
+    """Downloads an image from a URL and saves it to a folder."""
+    import requests
+    import time
+    try:
+        response = requests.get(url, stream=True, timeout=10)
+        if response.status_code == 200:
+            ext = os.path.splitext(url)[1].lower()
+            if ext not in ['.jpg', '.jpeg', '.png']: ext = '.jpg'
+            filename = f"imported_{int(time.time())}{ext}"
+            path = os.path.join(dest_folder, filename)
+            with open(path, 'wb') as f:
+                for chunk in response.iter_content(1024):
+                    f.write(chunk)
+            log.info("Downloaded image %s to %s", url, path)
+            return filename
+    except Exception as e:
+        log.error("Failed to download image %s: %s", url, e)
+    return None
+
+@api_bp.route("/api/staff/import", methods=["POST"])
+@login_required
+def api_staff_import():
+    """Bulk import staff members from CSV."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file uploaded"}), 400
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"success": False, "error": "Empty filename"}), 400
+        
+        import csv
+        import io
+        
+        # Read file as text
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_input = csv.DictReader(stream)
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        count = 0
+        
+        for row in csv_input:
+            # Handle potential BOM or different case
+            name = (row.get('name') or row.get('Name') or '').strip()
+            if not name: continue
+            
+            email = (row.get('email') or row.get('Email') or '').strip()
+            phone = (row.get('phone') or row.get('Phone') or '').strip()
+            address = (row.get('address') or row.get('Address') or '').strip()
+            image_url = (row.get('image_url') or row.get('Image URL') or '').strip()
+            comm_details = (row.get('communication_details') or row.get('Communication') or '').strip()
+            
+            # Clean up communication details - if it looks like a list/dict string, try to normalize it
+            if comm_details.startswith(('[', '{')):
+                try:
+                    import json
+                    # Just verify it's valid JSON
+                    json.loads(comm_details.replace("'", '"'))
+                except:
+                    log.warning("Invalid JSON in communication_details for %s", name)
+            
+            # Ensure a directory exists for the staff member
+            safe_name = secure_filename(name)
+            staff_dir = os.path.join(_upload_folder(), safe_name)
+            os.makedirs(staff_dir, exist_ok=True)
+
+            # Handle image download if provided
+            if image_url:
+                download_image_from_url(image_url, staff_dir)
+
+            # Check if name exists to update instead of insert
+            cur.execute("SELECT id FROM staff_profiles WHERE name = %s", (name,))
+            if cur.fetchone():
+                cur.execute(
+                    "UPDATE staff_profiles SET email=%s, phone=%s, address=%s, communication=%s WHERE name=%s",
+                    (email, phone, address, comm_details, name)
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO staff_profiles (name, email, phone, address, communication, folder_path) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (name, email, phone, address, comm_details, staff_dir)
+                )
+            count += 1
+            
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({"success": True, "count": count})
+    except Exception as e:
+        log.error("Error during staff import: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@api_bp.route("/api/staff/export", methods=["GET"])
+@login_required
+def api_staff_export():
+    """Export staff directory to CSV or printable format."""
+    fmt = request.args.get('format', 'csv')
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT name, email, phone, address, status, communication FROM staff_profiles ORDER BY name ASC")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if fmt in ['csv', 'excel'] or request.args.get('ext') == 'xlsx':
+            if fmt == 'excel' or request.args.get('ext') == 'xlsx':
+                import pandas as pd
+                import io
+                from flask import Response
+                df = pd.DataFrame(rows)
+                # Rename columns for clarity in Excel
+                df.columns = ['Name', 'Email', 'Phone', 'Address', 'Status', 'Communication Details']
+                
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Members')
+                
+                return Response(
+                    output.getvalue(),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-disposition": f"attachment; filename=member_directory.xlsx"}
+                )
+            else:
+                import csv
+                import io
+                from flask import Response
+                output = io.StringIO()
+                writer = csv.writer(output)
+                writer.writerow(['name', 'email', 'phone', 'address', 'status', 'communication_details'])
+                for r in rows:
+                    writer.writerow([r['name'], r['email'], r['phone'], r['address'], r['status'], r['communication']])
+                
+                return Response(
+                    output.getvalue(),
+                    mimetype="text/csv",
+                    headers={"Content-disposition": f"attachment; filename=member_directory.csv"}
+                )
+        else:
+            # Simple printable HTML for PDF export
+            html = f"""
+            <html>
+            <head>
+                <title>Member Directory Export</title>
+                <style>
+                    body {{ font-family: sans-serif; padding: 40px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                    th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+                    th {{ background-color: #f4f4f4; }}
+                    h1 {{ color: #333; }}
+                </style>
+            </head>
+            <body>
+                <h1>Member Directory</h1>
+                <p>Exported on: {os.popen('date /t').read().strip() if os.name == 'nt' else os.popen('date').read().strip()}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Address</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            for r in rows:
+                html += f"""
+                        <tr>
+                            <td>{r['name']}</td>
+                            <td>{r['email']}</td>
+                            <td>{r['phone']}</td>
+                            <td>{r['address']}</td>
+                            <td>{r['status']}</td>
+                        </tr>
+                """
+            html += """
+                    </tbody>
+                </table>
+                <script>window.print();</script>
+            </body>
+            </html>
+            """
+            return html
+    except Exception as e:
+        log.error("Error during staff export: %s", e)
+        return f"Export Error: {str(e)}", 500
+

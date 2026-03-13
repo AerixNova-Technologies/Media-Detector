@@ -54,9 +54,10 @@ def route_settings_profile():
     return render_template("settings/profile.html")
 
 
+@dashboard_bp.route("/settings/members")
 @dashboard_bp.route("/settings/staff")
 @login_required
-def route_settings_staff():
+def route_settings_members():
     return render_template("settings/staff.html")
 
 
