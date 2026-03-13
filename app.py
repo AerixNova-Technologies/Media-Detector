@@ -166,6 +166,13 @@ class AIPipeline(threading.Thread):
         import traceback
         while not self._stop_evt.is_set():
             try:
+                # MANDATORY ZERO-LATENCY FLUSH: 
+                # Discard all old buffered frames so AI always works on the ABSOLUTE LATEST frame.
+                # This ensures the box moves with the person in "milli seconds".
+                while self.in_queue.qsize() > 1:
+                    try: self.in_queue.get_nowait()
+                    except: break
+
                 ai_frame = self.in_queue.get(timeout=1.0)
                 if ai_frame is None: break
                 

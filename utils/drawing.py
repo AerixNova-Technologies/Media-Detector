@@ -9,6 +9,11 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+# Colour palette – Reference Video Style (Red Boxes)
+BOX_COLOR: tuple = (0, 0, 255)   # Red
+ID_COLOR:  tuple = (0, 255, 0)   # Green
+TEXT_COLOR: tuple = (255, 255, 255) # White
+
 # Colour palette – one colour per track ID (cycles)
 _PALETTE = [
     (255,  80,  80),
@@ -38,59 +43,30 @@ def draw_person(
 ) -> None:
     """Draw a bounding box and text labels for one tracked person."""
     x1, y1, x2, y2 = (int(v) for v in bbox)
-    color = _track_color(track_id)
+    # Main box (Red - Surveillance Style)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), BOX_COLOR, 2)
 
-    # Main box
-    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-    # Corner accents (visual polish)
-    corner_len = 14
-    thickness = 3
-    for cx, cy, dx, dy in [
-        (x1, y1,  1,  1),
-        (x2, y1, -1,  1),
-        (x2, y2, -1, -1),
-        (x1, y2,  1, -1),
-    ]:
-        cv2.line(frame, (cx, cy), (cx + dx * corner_len, cy), color, thickness)
-        cv2.line(frame, (cx, cy), (cx, cy + dy * corner_len), color, thickness)
-
-    # Label block above the box
-    lines = [
-        f"Staff: {identity}" if (identity and identity != "Unknown") else f"Person #{track_id}",
-        f"Emotion: {emotion}" if emotion else None,
-        f"Action: {action}" if action else None,
-    ]
-    lines = [l for l in lines if l]
-
+    # Labels (Reference Style: Person in Red, ID in Green)
+    identity_str = identity if (identity and identity != "Unknown") else "PERSON"
+    id_str = f"ID: {track_id}"
+    
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.55
+    font_scale = 0.50
     font_thickness = 1
-    line_height = 18
+    line_height = 16
 
-    # Background rectangle
-    pad = 4
-    block_h = len(lines) * line_height + pad * 2
-    block_y1 = max(0, y1 - block_h)
-    block_y2 = y1
+    # Label 1: TYPE (Red Background)
+    (tw1, th1), _ = cv2.getTextSize(identity_str, font, font_scale, font_thickness)
+    cv2.rectangle(frame, (x1, y1 - th1 - 10), (x1 + tw1 + 10, y1), BOX_COLOR, -1)
+    cv2.putText(frame, identity_str, (x1 + 5, y1 - 5), font, font_scale, TEXT_COLOR, font_thickness, cv2.LINE_AA)
 
-    max_w = 0
-    for line in lines:
-        (tw, _), _ = cv2.getTextSize(line, font, font_scale, font_thickness)
-        max_w = max(max_w, tw)
+    # Label 2: ID (Below Type, or adjacent)
+    cv2.putText(frame, id_str, (x1 + tw1 + 15, y1 - 5), font, font_scale, ID_COLOR, 2, cv2.LINE_AA)
 
-    # Solid background for speed (avoiding expensive frame.copy() + addWeighted)
-    cv2.rectangle(frame, (x1, block_y1), (x1 + max_w + pad * 2, block_y2), (30, 30, 30), -1)
-    cv2.rectangle(frame, (x1, block_y1), (x1 + max_w + pad * 2, block_y2), color, 1)
-
-    for i, line in enumerate(lines):
-        ty = block_y1 + pad + (i + 1) * line_height - 2
-        cv2.putText(
-            frame, line,
-            (x1 + pad, ty),
-            font, font_scale, (255, 255, 255), font_thickness,
-            cv2.LINE_AA,
-        )
+    # Label 3: Action/Emotion (optional extra line)
+    if action or emotion:
+        extra = f"{action} {emotion}".strip()
+        cv2.putText(frame, extra, (x1, y1 + 15), font, 0.4, ID_COLOR, 1, cv2.LINE_AA)
 
 
 def draw_face(
@@ -100,8 +76,7 @@ def draw_face(
 ) -> None:
     """Draw a thin face bounding box."""
     fx1, fy1, fx2, fy2 = (int(v) for v in face_bbox)
-    color = _track_color(track_id)
-    cv2.rectangle(frame, (fx1, fy1), (fx2, fy2), color, 1)
+    cv2.rectangle(frame, (fx1, fy1), (fx2, fy2), BOX_COLOR, 1)
 
 
 def draw_status_bar(

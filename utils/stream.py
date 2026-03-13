@@ -68,9 +68,8 @@ class VideoStream:
         )
 
         if is_url:
-            # Force UDP for lower latency/higher FPS on RTSP
-            # This must be set before VideoCapture
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+            # Force UDP and Kill Buffering for instant RTSP
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp|fflags;nobuffer|probesize;32"
             self._cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
         else:
             # On Windows, DirectShow (CAP_DSHOW) is MUCH faster for webcam init
@@ -104,12 +103,17 @@ class VideoStream:
         while not self._stop_event.is_set():
             if self._cap is None or not self._cap.isOpened():
                 break
-            # Blocking read inside the thread
+            
+            # Senior Fix: Aggressively grab frames to dump the hardware buffer
+            # On some RTSP streams, read() can fall behind by seconds. 
+            # We grab several times to ensure we are at the absolute front of the live stream.
+            for _ in range(2): 
+                self._cap.grab()
+                
             ok, frame = self._cap.read()
             with self._lock:
                 self._ok = ok
                 self._latest_frame = frame
-            # If the camera drops, standard read logic handles reconnect
             if not ok:
                 break
                 

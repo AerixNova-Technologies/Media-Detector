@@ -72,6 +72,8 @@ class PersonDetector:
             classes=[self.PERSON_CLASS_ID],
             device=self.device,
             verbose=False,
+            agnostic_nms=True,   # Principal Fix: prevent multiple boxes for one person
+            iou=0.4,             # Strict overlap suppression (matches video ref)
         )
 
         boxes: list[list[float]] = []
@@ -82,15 +84,20 @@ class PersonDetector:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 conf = float(box.conf[0])
                 
-                # 1. Filter out "Giant Boxes" (likely artifacts/ghosts)
+                # 1. Kill "Giant Ghost Boxes" (Likely background wall/floor errors)
                 bw, bh = (x2 - x1), (y2 - y1)
-                if bw > (frame.shape[1] * 0.85) or bh > (frame.shape[0] * 0.85):
+                fw, fh = frame.shape[1], frame.shape[0]
+                if bw > (fw * 0.75) or bh > (fh * 0.75):
                     continue
 
-                # 2. Filter out "Extreme Flat Boxes" (Furniture, Fans, Tables)
-                # Humans are usually vertical. If width > 2x height, it's definitely not a person.
-                # Relaxed from 1.5x to 2.0x to catch sitting people properly.
-                if bw > (bh * 2.1):
+                # 2. Filter out "Noise" (ignore objects smaller than 6% of frame height)
+                if bh < (fh * 0.06):
+                    continue
+
+                # 3. Smart Proportion Filter (Principal Fix)
+                # Humans are vertical. Sitting people can be square-ish.
+                # If width is > 1.8x height, it's definitely a desk/laptop, not a human.
+                if bw > (bh * 1.8):
                     continue
                     
                 boxes.append([x1, y1, x2, y2, conf])
@@ -130,4 +137,5 @@ class PersonDetector:
                 elif cls_id in PHONE_CLASS_IDS:
                     phone_boxes.append(bbox)
 
+        return {"food": food_boxes, "phone": phone_boxes}
         return {"food": food_boxes, "phone": phone_boxes}

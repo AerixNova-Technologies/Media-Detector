@@ -26,7 +26,7 @@ FRAME_WIDTH:  int   = 1280
 FRAME_HEIGHT: int   = 720
 TARGET_FPS:   float = 30.0
 
-# Professional AI Resolution (YOLO standard 640)
+# Professional Surveillance Resolution (YOLO Native 640x384)
 AI_FRAME_WIDTH:  int = 640
 AI_FRAME_HEIGHT: int = 384
 
@@ -40,10 +40,10 @@ MOTION_VAR_THRESHOLD: float = 12.0  # lower = more sensitive
 MOTION_COOLDOWN_SEC: float = 30.0
 
 # ─── Person Detection (YOLOv8) ─────────────────────────────────────────────
-YOLO_MODEL:       str   = "yolov8s.pt"  # Upgrade to 'Small' model for much higher accuracy
-YOLO_CONF:        float = 0.35          # Slightly lower to catch sitting/leaning people
+YOLO_MODEL:       str   = "yolov8n.pt"  # Nano Model: Exact speed of reference videos
+YOLO_CONF:        float = 0.40          # High Clarity: Kills background "Ghost" boxes
 YOLO_DEVICE:      str   = "cpu" 
-YOLO_SKIP_FRAMES: int   = 1             # Process every single frame sent to AI
+YOLO_SKIP_FRAMES: int   = 0             # Direct movement processing
 
 import os
 # Detection mode:
@@ -52,8 +52,8 @@ import os
 DETECTION_MODE: str = os.environ.get("DETECTION_MODE", "yolo_only")  # Optimized for CPU DEMO speed
 
 # ─── Tracking (DeepSORT) ───────────────────────────────────────────────────
-DEEPSORT_MAX_AGE:  int = 15              # Standard surveillance persistence
-DEEPSORT_N_INIT:   int = 3              # Confirm ID in 3 frames for zero-lag entry
+DEEPSORT_MAX_AGE:  int = 20             # Balanced: No flickering, but instant ID cleanup
+DEEPSORT_N_INIT:   int = 2              # Rapid confirmation
 DEEPSORT_MAX_IOU:  float = 0.7          
 DEEPSORT_EMBEDDER: str = "mobilenet"
 
@@ -71,10 +71,10 @@ ACTION_SLOW_STRIDE: int  = 8
 ACTION_DEVICE:      str  = "cpu"
 
 # ─── Threading ─────────────────────────────────────────────────────────────
-AI_THREAD_FRAME_SKIP: int = 4            # Skip to 4 while using heavier 'S' model on CPU
+AI_THREAD_FRAME_SKIP: int = 3            # Optimized for 640px on CPU
 
-# Result age: match the AI thread speed (approx 0.5s - 1.5s)
-RESULT_MAX_AGE_SEC: float = 1.5
+# Result age: match the AI thread speed (Clean-Surveillance Profile)
+RESULT_MAX_AGE_SEC: float = 1.2
 
 # ─── Counting (Tripwire) ──────────────────────────────────────────────────
 ENABLE_COUNTING: bool = True
