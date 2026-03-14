@@ -1,28 +1,209 @@
 {% extends 'base.html' %}
 {% set active_page = 'dashboard' %}
-{% block content %}
-<div id="view-dashboard" class="dashboard-layout" style="display:block;">
-  <div class="settings-card" style="max-width: 100%; text-align: center;">
-    <h2 style="font-size: 24px; color: var(--accent);">System Dashboard</h2>
-    <p style="color: var(--muted); font-size: 14px; margin-bottom: 30px;">Live Camera Connection Status</p>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-      <div style="background: var(--surface); padding: 40px; border-radius: 12px; border: 1px solid var(--green);">
-        <div style="font-size: 48px; color: var(--green); font-weight: bold; font-family: monospace;"
-          id="dash-cam-online">0</div>
-        <div style="font-size: 14px; color: var(--muted); margin-top: 5px; text-transform: uppercase;">Cameras
-          Online</div>
-      </div>
-      <div style="background: var(--surface); padding: 40px; border-radius: 12px; border: 1px solid var(--red);">
-        <div style="font-size: 48px; color: var(--red); font-weight: bold; font-family: monospace;"
-          id="dash-cam-offline">0</div>
-        <div style="font-size: 14px; color: var(--muted); margin-top: 5px; text-transform: uppercase;">Cameras
-          Offline</div>
-      </div>
+{% block content %}
+<div id="view-dashboard" class="dashboard-container" style="padding: 20px 24px; background: var(--bg); height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 16px;">
+    
+    <!-- Top Header Profile Section -->
+    <div class="dashboard-welcome-row" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px;">
+        <div>
+            <div id="greeting-text" style="font-size: 24px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px;">
+                Good morning, {{ user_info.full_name|default('User') }}! 👋
+            </div>
+            <p style="color: var(--muted); font-size: 14px; margin-top: 4px;">Welcome back! Here's an overview of your monitoring status</p>
+        </div>
+        
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button onclick="loadDashboard()" class="btn" style="background: var(--surface); border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; color: var(--text); display: flex; align-items: center; gap: 8px; font-weight: 600;">
+                <span style="font-size: 16px;">🔄</span> Refresh
+            </button>
+        </div>
     </div>
-  </div>
+
+    <!-- 3 Major Stat Cards (Removed Daily Events) -->
+    <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 8px;">
+        
+        <!-- Card 1: Cameras Status -->
+        <div class="premium-card">
+            <div class="premium-card-header">
+                <span class="premium-card-label">Network Status</span>
+                <span class="premium-card-icon">📡</span>
+            </div>
+            <div class="premium-card-value"><span id="dash-cam-online">...</span> / <span id="dash-cam-total">...</span></div>
+            <div class="premium-card-footer">
+                <div class="trend-info">
+                    <span class="trend-up">↗ <span id="dash-online-pct">...</span>%</span>
+                    <span class="trend-label">cameras online</span>
+                </div>
+                <div class="progress-track">
+                    <div id="dash-cam-progress" class="progress-fill" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Member Count -->
+        <div class="premium-card">
+            <div class="premium-card-header">
+                <span class="premium-card-label">Member Count</span>
+                <span class="premium-card-icon">👤</span>
+            </div>
+            <div class="premium-card-value" id="dash-staff">...</div>
+            <div class="premium-card-footer">
+                <div class="trend-info">
+                    <span class="trend-label">Profiles registered in DB</span>
+                </div>
+                <div class="progress-track">
+                    <div id="dash-staff-progress" class="progress-fill accent" style="width: 20%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Active Users -->
+        <div class="premium-card">
+            <div class="premium-card-header">
+                <span class="premium-card-label">Active Users</span>
+                <span class="premium-card-icon">👥</span>
+            </div>
+            <div class="premium-card-value" id="dash-users">...</div>
+            <div class="premium-card-footer">
+                <div class="trend-info">
+                    <span class="trend-label">System access accounts</span>
+                </div>
+                <div class="progress-track">
+                    <div id="dash-users-progress" class="progress-fill accent" style="width: 15%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secondary Areas: Activity & Health -->
+    <div style="flex: 1; display: grid; grid-template-columns: 1fr 360px; gap: 16px; min-height: 0;">
+        
+        <!-- Activity Panel -->
+        <div class="settings-card" style="padding: 24px; display: flex; flex-direction: column; min-height: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
+                <h3 style="font-size: 16px; font-weight: 800;">Recent Detection Events</h3>
+                <span style="font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer;">View Timeline ›</span>
+            </div>
+            <div id="event-log-container" style="flex: 1; overflow: hidden; padding-right: 8px;">
+                <div id="mock-events" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Real detections will be listed here or mock items if empty -->
+                    <div style="padding: 40px; text-align: center; color: var(--muted);">
+                        <div style="font-size: 40px; margin-bottom: 12px; opacity: 0.3;">📋</div>
+                        <p style="font-size: 14px;">No critical activities recorded today.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health panel -->
+        <div style="display: flex; flex-direction: column; gap: 16px; min-height: 0;">
+            <div class="settings-card" style="padding: 24px; flex-shrink: 0;">
+                <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 20px;">System Health</h3>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface2); border-radius: 10px;">
+                        <span style="font-size: 14px; font-weight: 600;">AI Engine</span>
+                        <span class="badge" id="health-ai">...</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface2); border-radius: 10px;">
+                        <span style="font-size: 14px; font-weight: 600;">Database</span>
+                        <span class="badge" id="health-db">...</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface2); border-radius: 10px;">
+                        <span style="font-size: 14px; font-weight: 600;">Media Server</span>
+                        <span class="badge" id="health-media">...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Information bit -->
+            <div class="settings-card" style="padding: 24px; border-left: 4px solid var(--accent); flex: 1;">
+                <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Operational Brief</h3>
+                <p style="font-size: 13px; color: var(--muted); line-height: 1.5;">All sensors report nominal parameters. AI optimization v2.0 is engaged on current channels.</p>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- ─── Settings View ─── -->
+<script>
+async function loadDashboard() {
+    try {
+        console.log("Fetching dashboard data...");
+        // Add timestamp to foil caching
+        const res = await fetch('/api/dashboard_info?t=' + Date.now());
+        const data = await res.json();
+        console.log("Dashboard data received:", data);
+        
+        // Update Stats using NEW keys
+        const online = data.cam_online ?? 0;
+        const total = data.cam_total ?? 0;
+        const staff = data.staff_total ?? 0;
+        const users = data.user_total ?? 0;
 
+        document.getElementById('dash-cam-online').innerText = online;
+        document.getElementById('dash-cam-total').innerText = total;
+        document.getElementById('dash-staff').innerText = staff;
+        document.getElementById('dash-users').innerText = users;
+        
+
+        if (data.db_status) {
+            const dbBadge = document.getElementById('health-db');
+            dbBadge.innerText = data.db_status === 'connected' ? 'Connected' : 'Error';
+            dbBadge.className = 'badge ' + (data.db_status === 'connected' ? '' : 'offline');
+        }
+
+        if (data.ai_status) {
+            const aiBadge = document.getElementById('health-ai');
+            aiBadge.innerText = data.ai_status === 'running' ? 'Running' : (data.ai_status === 'idle' ? 'Idle' : 'Error');
+            aiBadge.className = 'badge ' + (data.ai_status === 'running' ? '' : 'offline');
+        }
+
+        if (data.media_status) {
+            const msBadge = document.getElementById('health-media');
+            msBadge.innerText = data.media_status === 'active' ? 'Active' : 'Idle';
+            msBadge.className = 'badge ' + (data.media_status === 'active' ? '' : 'offline');
+        }
+        
+        // Online Pct & Progress
+        const pct = total > 0 ? Math.round((online / total) * 100) : 0;
+        document.getElementById('dash-online-pct').innerText = pct;
+        document.getElementById('dash-cam-progress').style.width = pct + '%';
+        
+        // Update staff progress based on some arbitrary goal (e.g. 50)
+        const staffPct = Math.min(100, Math.round((staff / 50) * 100));
+        document.getElementById('dash-staff-progress').style.width = staffPct + '%';
+
+        // Update user progress
+        const userPct = Math.min(100, Math.round((users / 10) * 100));
+        document.getElementById('dash-users-progress').style.width = userPct + '%';
+        
+    } catch (e) { 
+        console.error("Dashboard Load Error:", e);
+        // Show error values if fetch fails
+        document.getElementById('dash-staff').innerText = "Err";
+        document.getElementById('dash-users').innerText = "Err";
+    }
+}
+
+function updateGreeting() {
+    const hour = new Date().getHours();
+    const greet = document.getElementById('greeting-text');
+    let text = "Good morning";
+    if (hour >= 12 && hour < 17) text = "Good afternoon";
+    else if (hour >= 17 || hour < 4) text = "Good evening";
+    
+    const name = "{{ user_info.full_name|default('Admin') }}";
+    greet.innerHTML = `${text}, ${name}! 👋`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadDashboard();
+    updateGreeting();
+});
+</script>
+
+<style>
+.dashboard-container { height: calc(100vh - 53px); box-sizing: border-box; overflow: hidden !important; }
+#view-dashboard { overflow: hidden !important; }
+</style>
 {% endblock %}

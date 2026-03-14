@@ -15,7 +15,7 @@ except Exception:
     _DEEPFACE_OK = False
 
 class FaceRecognizer:
-    def __init__(self, skip_frames: int = 15, backend: str = "opencv", model_name="Facenet512"):
+    def __init__(self, db_path: str = None, skip_frames: int = 15, backend: str = "opencv", model_name="Facenet512"):
         self.skip_frames = skip_frames
         self.backend = backend
         self.model_name = model_name
@@ -28,6 +28,33 @@ class FaceRecognizer:
         self.threshold = 0.35 
         # Minimum size of face crop to attempt recognition
         self.min_face_size = 20 
+
+        if db_path and self._available:
+            self.load_from_folder(db_path)
+
+    def load_from_folder(self, db_path: str):
+        """Scan subfolders of db_path and load one face per folder."""
+        if not os.path.exists(db_path):
+            return
+            
+        log.info("FaceRec: Scanning %s for staff faces...", db_path)
+        for person_name in os.listdir(db_path):
+            person_dir = os.path.join(db_path, person_name)
+            if not os.path.isdir(person_dir):
+                continue
+                
+            # Try to find at least one valid image
+            for filename in os.listdir(person_dir):
+                if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    img_path = os.path.join(person_dir, filename)
+                    try:
+                        emb = self.extract_embedding(cv2.imread(img_path))
+                        if emb:
+                            self._known_faces.append({"name": person_name, "encoding": emb})
+                            log.info("FaceRec: Loaded staff member: %s", person_name)
+                            break # One photo per person is enough for this basic impl
+                    except Exception as e:
+                        log.warning("FaceRec: Failed to load %s: %s", img_path, e)
 
     def set_known_faces(self, faces: list[dict]):
         """Load biometric data directly from memory/DB."""

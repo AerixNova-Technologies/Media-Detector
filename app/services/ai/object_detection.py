@@ -44,6 +44,9 @@ PHONE_CLASS_IDS = {
 }
 
 
+import logging
+log = logging.getLogger("object_det")
+
 class PersonDetector:
     """Thin wrapper around an Ultralytics YOLOv8 model."""
 
@@ -55,6 +58,7 @@ class PersonDetector:
         conf_threshold: float = 0.40,
         device: str = "cpu",
     ):
+        log.info("Loading YOLO model: %s on %s", model_path, device)
         self.model = YOLO(model_path)
         self.conf_threshold = conf_threshold
         self.device = device
@@ -71,15 +75,16 @@ class PersonDetector:
             conf=self.conf_threshold,
             classes=[self.PERSON_CLASS_ID],
             device=self.device,
-            verbose=False,
-            agnostic_nms=True,   # Principal Fix: prevent multiple boxes for one person
-            iou=0.4,             # Strict overlap suppression (matches video ref)
+            verbose=True,        # Enable Ultralytics' own logging
+            agnostic_nms=True,
+            iou=0.4,
         )
 
         boxes: list[list[float]] = []
         for result in results:
             if len(result.boxes) > 0:
-                print(f"DEBUG: YOLO found {len(result.boxes)} persons with conf > {self.conf_threshold}")
+                log.info("YOLO: Found %d persons (conf > %.2f)", len(result.boxes), self.conf_threshold)
+            
             for box in result.boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 conf = float(box.conf[0])
@@ -88,13 +93,18 @@ class PersonDetector:
                 bw, bh = (x2 - x1), (y2 - y1)
                 fw, fh = frame.shape[1], frame.shape[0]
                 if bw > (fw * 0.98) or bh > (fh * 0.98):
+                    log.debug("YOLO: Filtered giant box: %dx%d", int(bw), int(bh))
                     continue
 
                 # 2. Filter out tiny artifacts (Noise)
                 if bh < (fh * 0.05):
+                    log.debug("YOLO: Filtered tiny box: %dx%d", int(bw), int(bh))
                     continue
 
                 boxes.append([x1, y1, x2, y2, conf])
+
+        if not boxes and len(results) > 0 and len(results[0].boxes) > 0:
+            log.info("YOLO: All detections were filtered out by giant/tiny rules.")
 
         return boxes
 
@@ -131,5 +141,4 @@ class PersonDetector:
                 elif cls_id in PHONE_CLASS_IDS:
                     phone_boxes.append(bbox)
 
-        return {"food": food_boxes, "phone": phone_boxes}
         return {"food": food_boxes, "phone": phone_boxes}
