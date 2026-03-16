@@ -945,6 +945,79 @@ def api_attendance_records():
             conn.close()
 
 
+@api_bp.route("/api/attendance/forensics", methods=["GET"])
+@login_required
+def api_attendance_forensics():
+    """Return member_time_stamp rows with images for a given staff member and date."""
+    staff_name = (request.args.get("staff_name") or "").strip()
+    date_str   = (request.args.get("date") or "").strip()
+    limit      = min(int(request.args.get("limit", 20)), 50)
+
+    where = []
+    params = []
+    if staff_name:
+        where.append("m.staff_name ILIKE %s")
+        params.append(f"%{staff_name}%")
+    if date_str:
+        where.append("m.entry_time::date = %s::date")
+        params.append(date_str)
+    else:
+        where.append("m.entry_time::date = CURRENT_DATE")
+
+    where_sql = "WHERE " + " AND ".join(where) if where else "WHERE m.entry_time::date = CURRENT_DATE"
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute(f"""
+            SELECT
+                m.id,
+                m.person_id,
+                m.staff_id,
+                m.staff_name,
+                m.camera_name,
+                m.entry_image,
+                m.exit_image,
+                m.merged_image,
+                m.entry_time,
+                m.exit_time,
+                COALESCE(s.email, '') AS email,
+                COALESCE(s.phone, '') AS phone
+            FROM member_time_stamp m
+            LEFT JOIN staff_profiles s ON s.id = m.staff_id
+            {where_sql}
+            ORDER BY m.entry_time DESC
+            LIMIT %s
+        """, tuple(params + [limit]))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        def img_url(filename):
+            if not filename:
+                return None
+            return f"/static/uploads/snapshots/{filename}"
+
+        records = []
+        for r in rows:
+            records.append({
+                "id":          r["id"],
+                "staff_name":  r["staff_name"] or "Unknown",
+                "email":       r["email"],
+                "phone":       r["phone"],
+                "camera_name": r["camera_name"],
+                "entry_time":  r["entry_time"].isoformat() if r["entry_time"] else None,
+                "exit_time":   r["exit_time"].isoformat()  if r["exit_time"]  else None,
+                "entry_image": img_url(r["entry_image"]),
+                "exit_image":  img_url(r["exit_image"]),
+                "merged_image":img_url(r["merged_image"]),
+            })
+        return jsonify({"success": True, "records": records})
+    except Exception as e:
+        log.error("Error fetching forensics: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @api_bp.route("/api/attendance/export", methods=["GET"])
 @login_required
 def api_attendance_export():

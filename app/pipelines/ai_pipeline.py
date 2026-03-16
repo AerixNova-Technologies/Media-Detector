@@ -221,6 +221,31 @@ class AIPipeline(threading.Thread):
             log.error(f"Merge error: {e}")
             return None
 
+    def _link_identity_to_snapshot(self, tid: int, identity: str) -> None:
+        """When face recognition fires, backfill staff_id/staff_name onto the
+        member_time_stamp row for this track session."""
+        if tid not in self._db_sessions:
+            return
+        session_id = self._db_sessions[tid]
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id FROM staff_profiles WHERE name = %s LIMIT 1",
+                (identity,),
+            )
+            row = cur.fetchone()
+            staff_id = row["id"] if row else None
+            cur.execute(
+                "UPDATE member_time_stamp SET staff_id = %s, staff_name = %s WHERE id = %s",
+                (staff_id, identity, session_id),
+            )
+            conn.commit()
+            conn.close()
+            log.info("Linked identity '%s' to member_time_stamp id=%d", identity, session_id)
+        except Exception as e:
+            log.error("_link_identity_to_snapshot error: %s", e)
+
     def _db_log_entry(self, tid, filename):
         """Creates a forensic entry record in the database."""
         try:
@@ -481,9 +506,13 @@ class AIPipeline(threading.Thread):
                                 self.attendance_tracker.heartbeat(identity, self.camera_name)
                             except Exception as att_err:
                                 log.warning("Attendance heartbeat failed for %s: %s", identity, att_err)
-                            # First-sighting Telegram match notification (once per track)
+                            # First-sighting: link identity to member_time_stamp forensic record
                             if tid not in self._notified_identities:
                                 self._notified_identities.add(tid)
+                                try:
+                                    self._link_identity_to_snapshot(tid, identity)
+                                except Exception as link_err:
+                                    log.warning("Snapshot identity link failed: %s", link_err)
                         
                         is_unknown = (cached_identity == "" or cached_identity == "Unknown")
                         active_rec_tasks = sum(1 for f in self._rec_futures.values() if not f.done())

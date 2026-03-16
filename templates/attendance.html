@@ -14,6 +14,10 @@
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
         <button id="toggle-att-summary-btn" class="secondary-btn" onclick="toggleAttendanceSummary()"><span>⌃</span> Hide Summary</button>
+        <div class="att-view-tabs">
+          <button class="att-view-tab active" id="tab-events" onclick="switchView('events')">Events</button>
+          <button class="att-view-tab" id="tab-forensics" onclick="switchView('forensics')">📸 Forensic Images</button>
+        </div>
         <button class="secondary-btn" onclick="exportAttendance('excel')"><span>📥</span> Export</button>
       </div>
     </div>
@@ -41,6 +45,7 @@
       </select>
     </div>
 
+    <div id="view-events">
     <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden;">
       <table style="width:100%; border-collapse:collapse;">
         <thead style="background: var(--surface2);">
@@ -60,6 +65,18 @@
     </div>
 
     <div id="att-pagination-container" style="margin-top:16px; padding:12px 14px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
+    </div>
+    </div><!-- /view-events -->
+
+    <!-- Forensic Images View -->
+    <div id="view-forensics" style="display:none;">
+      <div class="forensics-filter-row">
+        <input id="forensics-search" type="text" class="att-input" placeholder="Search by staff name..." style="max-width:280px;" oninput="loadForensics()"/>
+        <input id="forensics-date" type="date" class="att-input" style="width:160px;" onchange="loadForensics()"/>
+      </div>
+      <div id="forensics-grid" class="forensics-grid">
+        <div class="att-empty" style="padding:40px; text-align:center; color:var(--muted);">Select a date to load forensic records.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -85,7 +102,24 @@
     .att-filter-row { flex-wrap:wrap; }
     .att-search-wrap { max-width:none; width:100%; }
   }
-  .secondary-btn {
+  .att-view-tabs { display:flex; gap:2px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px; }
+  .att-view-tab { padding:5px 14px; border:none; border-radius:6px; font-size:12px; font-weight:600; color:var(--muted); background:none; cursor:pointer; transition:all .15s; }
+  .att-view-tab.active { background:var(--surface); color:var(--accent); box-shadow:var(--shadow-sm); }
+  .forensics-filter-row { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
+  .forensics-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; }
+  .forensic-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:box-shadow .15s; }
+  .forensic-card:hover { box-shadow:var(--shadow-md); }
+  .forensic-card-header { padding:12px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .forensic-name { font-size:13px; font-weight:700; color:var(--text); }
+  .forensic-time { font-size:11px; color:var(--muted); }
+  .forensic-images { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); }
+  .forensic-images.has-merged { grid-template-columns:1fr; }
+  .forensic-img-wrap { background:var(--surface2); aspect-ratio:16/9; overflow:hidden; position:relative; }
+  .forensic-img-wrap img { width:100%; height:100%; object-fit:cover; }
+  .forensic-img-label { position:absolute; bottom:0; left:0; right:0; padding:3px 6px; background:rgba(0,0,0,.55); color:white; font-size:10px; font-weight:700; }
+  .forensic-img-placeholder { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:11px; }
+  .forensic-card-footer { padding:8px 14px; font-size:11px; color:var(--muted); display:flex; gap:12px; }
+    .secondary-btn {
     display:inline-flex; align-items:center; gap:6px;
     padding:8px 14px; background:var(--surface2); color:var(--text);
     border:1px solid var(--border); border-radius:8px;
@@ -289,6 +323,87 @@
       renderAttPagination(0);
     }
   }
+
+  let currentView = 'events';
+
+  function switchView(view) {
+    currentView = view;
+    document.getElementById('view-events').style.display    = view === 'events'    ? 'block' : 'none';
+    document.getElementById('view-forensics').style.display = view === 'forensics' ? 'block' : 'none';
+    document.getElementById('tab-events').classList.toggle('active',    view === 'events');
+    document.getElementById('tab-forensics').classList.toggle('active', view === 'forensics');
+    if (view === 'forensics') {
+      // Default to today
+      const d = document.getElementById('forensics-date');
+      if (!d.value) d.value = new Date().toISOString().split('T')[0];
+      loadForensics();
+    }
+  }
+
+  async function loadForensics() {
+    const grid = document.getElementById('forensics-grid');
+    const name = (document.getElementById('forensics-search').value || '').trim();
+    const date = document.getElementById('forensics-date').value;
+    grid.innerHTML = '<div class="att-empty" style="padding:40px;text-align:center;color:var(--muted);">Loading...</div>';
+    const params = new URLSearchParams();
+    if (name) params.set('staff_name', name);
+    if (date) params.set('date', date);
+    params.set('limit', '30');
+    try {
+      const r = await fetch('/api/attendance/forensics?' + params.toString());
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error);
+      renderForensics(d.records || []);
+    } catch(e) {
+      grid.innerHTML = `<div class="att-empty" style="padding:40px;text-align:center;color:var(--red);">Failed: ${e.message}</div>`;
+    }
+  }
+
+  function renderForensics(records) {
+    const grid = document.getElementById('forensics-grid');
+    if (!records.length) {
+      grid.innerHTML = '<div class="att-empty" style="padding:40px;text-align:center;color:var(--muted);">No forensic records found for this date.</div>';
+      return;
+    }
+    grid.innerHTML = records.map(r => {
+      const entryTime = r.entry_time ? new Date(r.entry_time).toLocaleTimeString() : '—';
+      const exitTime  = r.exit_time  ? new Date(r.exit_time).toLocaleTimeString()  : 'Still in';
+      const hasMerged = !!r.merged_image;
+      const imgSection = hasMerged ? `
+        <div class="forensic-images has-merged">
+          <div class="forensic-img-wrap">
+            <img src="${r.merged_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">Image not found</div>'" />
+            <div class="forensic-img-label">ENTRY → EXIT</div>
+          </div>
+        </div>` : `
+        <div class="forensic-images">
+          <div class="forensic-img-wrap">
+            ${r.entry_image
+              ? `<img src="${r.entry_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">No image</div>'" /><div class="forensic-img-label">🟢 ENTRY</div>`
+              : `<div class="forensic-img-placeholder">No entry image</div>`}
+          </div>
+          <div class="forensic-img-wrap">
+            ${r.exit_image
+              ? `<img src="${r.exit_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">No image</div>'" /><div class="forensic-img-label">🔴 EXIT</div>`
+              : `<div class="forensic-img-placeholder">No exit image</div>`}
+          </div>
+        </div>`;
+      return `
+        <div class="forensic-card">
+          <div class="forensic-card-header">
+            <div class="forensic-name">${r.staff_name || 'Unknown'}</div>
+            <div class="forensic-time">${entryTime}</div>
+          </div>
+          ${imgSection}
+          <div class="forensic-card-footer">
+            <span>📹 ${r.camera_name || '—'}</span>
+            <span>🟢 ${entryTime}</span>
+            <span>🔴 ${exitTime}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
 
   document.addEventListener('DOMContentLoaded', () => {
     initDateRangePicker();

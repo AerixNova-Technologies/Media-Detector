@@ -282,6 +282,8 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS member_time_stamp (
                 id SERIAL PRIMARY KEY,
                 person_id INTEGER,
+                staff_id INTEGER REFERENCES staff_profiles(id) ON DELETE SET NULL,
+                staff_name VARCHAR(255),
                 camera_name VARCHAR(255),
                 entry_image TEXT,
                 exit_image TEXT,
@@ -291,6 +293,15 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Migrate existing rows — add columns if upgrading
+        for col in [
+            "ALTER TABLE member_time_stamp ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES staff_profiles(id) ON DELETE SET NULL",
+            "ALTER TABLE member_time_stamp ADD COLUMN IF NOT EXISTS staff_name VARCHAR(255)",
+        ]:
+            try: cur.execute(col)
+            except Exception: pass
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mts_staff_id ON member_time_stamp(staff_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mts_entry_time ON member_time_stamp(entry_time)")
 
         # Backward-compatible schema alignment for existing attendance tables
         try:
