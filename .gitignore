@@ -26,6 +26,7 @@ wheels/
 *.egg
 
 # ML Models & Weights
+*.pt
 *.pth
 *.onnx
 weights/
@@ -34,6 +35,7 @@ models/
 # Logs & Databases
 *.log
 *.sqlite3
+*.db
 
 # OS generated files
 .DS_Store

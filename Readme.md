@@ -47,8 +47,8 @@ The system uses **PostgreSQL**. Ensure `DATABASE_URL` is set in `.env` (the inst
     *   This script will automate virtual environment creation, pip installation, and database seeding.
 
 ### Default Admin Credentials:
-*   **Email:** `admin@growmax.com`
-*   **Password:** `Admin@123`
+*   **Email:** `admin@yourdomain.com` *(update this in `scripts/seed_admin.py` before first run)*
+*   **Password:** `AerixNova@2025` *(change immediately after first login)*
 
 ---
 
