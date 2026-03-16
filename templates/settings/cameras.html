@@ -234,7 +234,7 @@ const BRAND_COLORS = {
 };
 function getBrandColor(b){const k=(b||'').toLowerCase();for(const[key,v] of Object.entries(BRAND_COLORS)){if(k.includes(key))return v;}return'#64748b';}
 function getBrandInitials(b){const n=(b||'IP').trim();const w=n.split(/\s+/).filter(Boolean);return w.length===1?n.slice(0,2).toUpperCase():(w[0][0]+w[1][0]).toUpperCase();}
-function getRtspPath(b){const k=(b||'').toLowerCase();for(const[key,v] of Object.entries(BRAND_RTSP_PATHS)){if(k.includes(key))return v;}return'/Streaming/Channels/101';}
+function getRtspPath(b){const k=(b||'').toLowerCase();for(const[key,v] of Object.entries(BRAND_RTSP_PATHS)){if(k.includes(key))return v;}return'/cam/realmonitor?channel=1&subtype=0';}
 
 let detectedCameras=[],connectedCameras=[],editingCameraId=null,activeCardEl=null,previewStopTimer=null;
 

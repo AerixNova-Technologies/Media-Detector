@@ -89,15 +89,17 @@ def _normalize_manufacturer(raw: str) -> str:
 def _probe_rtsp_path(ip: str, port: int, path: str, timeout: float = 1.5) -> bool:
     """
     Send RTSP OPTIONS for a specific path. Returns True if camera acknowledges
-    the path (200 OK or 401 Unauthorized — both confirm path exists).
+    the path (200 OK or 401 Unauthorized -- both confirm path exists).
     No credentials required; 401 just means auth needed, path is valid.
     """
     url = f"rtsp://{ip}:{port}{path}"
+    # RTSP requires actual CRLF -- build them at runtime to avoid escape confusion
+    crlf = chr(13) + chr(10)
     request = (
-        f"OPTIONS {url} RTSP/1.0\r\n"
-        f"CSeq: 1\r\n"
-        f"User-Agent: MediaDetector/2.0\r\n"
-        f"\r\n"
+        f"OPTIONS {url} RTSP/1.0{crlf}"
+        f"CSeq: 1{crlf}"
+        f"User-Agent: MediaDetector/2.0{crlf}"
+        f"{crlf}"
     )
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -106,8 +108,10 @@ def _probe_rtsp_path(ip: str, port: int, path: str, timeout: float = 1.5) -> boo
         sock.sendall(request.encode())
         response = sock.recv(512).decode("utf-8", errors="ignore")
         sock.close()
-        first_line = response.split("\r\n")[0] if response else ""
-        code = first_line.split(" ")[1] if len(first_line.split(" ")) > 1 else ""
+        # Normalise line endings before parsing
+        first_line = response.replace(chr(13) + chr(10), chr(10)).split(chr(10))[0] if response else ""
+        parts = first_line.split(" ")
+        code = parts[1] if len(parts) > 1 else ""
         return code in ("200", "401", "403")
     except Exception:
         return False
