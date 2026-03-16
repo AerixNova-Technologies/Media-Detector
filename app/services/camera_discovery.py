@@ -31,13 +31,114 @@ _MAX_WEBCAM_INDEX = int(os.environ.get("CAMERA_SCAN_MAX_WEBCAM_INDEX", "8"))
 _ONVIF_DISCOVERY_TIMEOUT = float(os.environ.get("CAMERA_ONVIF_DISCOVERY_TIMEOUT_SEC", "1.5"))
 _ONVIF_DISCOVERY_PORT = 3702
 _ONVIF_DISCOVERY_ADDR = "239.255.255.250"
-_RTSP_PATH_HINTS = (
-    "/Streaming/Channels/101",
-    "/cam/realmonitor?channel=1&subtype=0",
-    "/h264/ch1/main/av_stream",
-    "/live/ch00_0",
-    "/stream1",
+
+# Ordered probe list — tried in sequence when brand is unknown.
+# Put the most common brands first so probing stops early.
+_RTSP_PROBE_PATHS = (
+    "/cam/realmonitor?channel=1&subtype=0",   # Dahua / IMOU / Amcrest
+    "/Streaming/Channels/101",                 # Hikvision / Tiandy
+    "/h264/ch1/main/av_stream",                # Hikvision alt
+    "/h264/ch0/main/av_stream",                # Reolink
+    "/stream1",                                # TP-Link / Tapo / generic
+    "/live/ch00_0",                            # Hanwha / Wisenet
+    "/axis-media/media.amp",                   # Axis
+    "/profile1/media.smp",                     # Hanwha alt
+    "/live.sdp",                               # Vivotek
+    "/media/video1",                           # Sony
+    "/videoMain",                              # Foscam
+    "/unicast/c1/s0/live",                     # Uniview
+    "/rtsp_tunnel",                            # Bosch
 )
+
+# Manufacturer keyword -> confirmed RTSP path.
+# Matched against the lowercase manufacturer string from ONVIF GetDeviceInformation.
+_BRAND_RTSP_MAP = {
+    "dahua":     "/cam/realmonitor?channel=1&subtype=0",
+    "imou":      "/cam/realmonitor?channel=1&subtype=0",
+    "amcrest":   "/cam/realmonitor?channel=1&subtype=0",
+    "hikvision": "/Streaming/Channels/101",
+    "tiandy":    "/Streaming/Channels/101",
+    "reolink":   "/h264/ch0/main/av_stream",
+    "axis":      "/axis-media/media.amp",
+    "hanwha":    "/live/ch00_0",
+    "wisenet":   "/live/ch00_0",
+    "samsung":   "/live/ch00_0",
+    "tp-link":   "/stream1",
+    "tapo":      "/stream1",
+    "vivotek":   "/live.sdp",
+    "sony":      "/media/video1",
+    "bosch":     "/rtsp_tunnel",
+    "foscam":    "/videoMain",
+    "uniview":   "/unicast/c1/s0/live",
+    "pelco":     "/stream1",
+}
+
+
+def _brand_to_rtsp_path(manufacturer: str):
+    key = manufacturer.lower().strip()
+    for brand, path in _BRAND_RTSP_MAP.items():
+        if brand in key:
+            return path
+    return None
+
+
+def _normalize_manufacturer(raw: str) -> str:
+    return raw.strip().title() if raw else ""
+
+
+def _probe_rtsp_path(ip: str, port: int, path: str, timeout: float = 1.5) -> bool:
+    """
+    Send RTSP OPTIONS for a specific path. Returns True if camera acknowledges
+    the path (200 OK or 401 Unauthorized — both confirm path exists).
+    No credentials required; 401 just means auth needed, path is valid.
+    """
+    url = f"rtsp://{ip}:{port}{path}"
+    request = (
+        f"OPTIONS {url} RTSP/1.0\r\n"
+        f"CSeq: 1\r\n"
+        f"User-Agent: MediaDetector/2.0\r\n"
+        f"\r\n"
+    )
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect((ip, port))
+        sock.sendall(request.encode())
+        response = sock.recv(512).decode("utf-8", errors="ignore")
+        sock.close()
+        first_line = response.split("\r\n")[0] if response else ""
+        code = first_line.split(" ")[1] if len(first_line.split(" ")) > 1 else ""
+        return code in ("200", "401", "403")
+    except Exception:
+        return False
+
+
+def _resolve_rtsp_path(ip: str, rtsp_port: int, onvif_port) -> tuple:
+    """
+    Determine correct RTSP path and brand using two strategies:
+    1. Unauthenticated ONVIF GetDeviceInformation -> manufacturer -> known path
+    2. RTSP OPTIONS probe on each candidate path -> first hit wins
+    Returns (rtsp_path, brand_name).
+    """
+    if onvif_port:
+        try:
+            info = fetch_onvif_device_info(ip=ip, port=onvif_port, username="", password="", timeout_sec=2.0)
+            if info.get("success") and info.get("manufacturer"):
+                manufacturer = info["manufacturer"]
+                path = _brand_to_rtsp_path(manufacturer)
+                if path:
+                    log.info("Brand resolved via ONVIF: %s -> %s", manufacturer, path)
+                    return path, _normalize_manufacturer(manufacturer)
+        except Exception as exc:
+            log.debug("Unauthenticated ONVIF GetDeviceInfo failed for %s: %s", ip, exc)
+
+    log.debug("Probing RTSP paths on %s:%d", ip, rtsp_port)
+    for path in _RTSP_PROBE_PATHS:
+        if _probe_rtsp_path(ip, rtsp_port, path):
+            log.info("RTSP path confirmed via OPTIONS probe: %s%s", ip, path)
+            return path, ""
+
+    return _RTSP_PROBE_PATHS[0], ""
 
 
 def _is_private_ipv4(ip: str) -> bool:
@@ -407,11 +508,29 @@ def detect_cameras(force: bool = False) -> list[dict]:
     network_cameras = _detect_network_cameras()
     network_merged  = _merge_detections(onvif_cameras, network_cameras)
 
-    for cam in network_merged:
+    # Resolve the correct RTSP path per camera using ONVIF + OPTIONS probe.
+    # Run in parallel so the scan doesn't take N * probe_time seconds.
+    def _enrich(cam: dict) -> None:
         rtsp_port = cam.get("rtsp_port")
         port_for_rtsp = rtsp_port if rtsp_port in (554, 8554) else cam.get("port")
-        if port_for_rtsp in (554, 8554):
-            cam["rtsp_hints"] = [f"rtsp://<user>:<pass>@{cam['ip']}:{port_for_rtsp}{path}" for path in _RTSP_PATH_HINTS]
+        if not port_for_rtsp or port_for_rtsp not in (554, 8554):
+            return
+        ip = cam.get("ip")
+        if not ip:
+            return
+        onvif_port = cam.get("onvif_port")
+        path, brand = _resolve_rtsp_path(ip, port_for_rtsp, onvif_port)
+        cam["rtsp_path"] = path          # confirmed working path
+        cam["rtsp_hints"] = [f"rtsp://<user>:<pass>@{ip}:{port_for_rtsp}{path}"]
+        if brand and not cam.get("brand"):
+            cam["brand"] = brand
+        if brand:
+            # Update the display name to include the real brand
+            cam["name"] = f"{brand} Camera ({ip})"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+        futures = [ex.submit(_enrich, cam) for cam in network_merged]
+        concurrent.futures.wait(futures)
 
     detected = sorted(
         system_cameras + network_merged,

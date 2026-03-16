@@ -330,8 +330,11 @@ function selectDetected(index){
   editingCameraId=null;
   const brand=cam.brand||(cam.protocol==='onvif'?'ONVIF':'');
   const port=cam.rtsp_port||cam.port||554;
-  const path=Array.isArray(cam.rtsp_hints)&&cam.rtsp_hints.length?extractRtspPath(cam.rtsp_hints[0]):getRtspPath(brand);
-  openConfig({name:cam.name||'Camera '+cam.ip,brand,ip:cam.ip||'',port,username:'admin',password:'admin',path,title:cam.name||'Detected Camera',subtitle:(cam.ip||'local')+' \u00B7 '+(cam.protocol||'unknown protocol')});
+  // Use confirmed path from scan if available, else fall back to brand map
+  const path=cam.rtsp_path||getRtspPath(brand);
+  const subtitle=(cam.ip||'local')+' \u00B7 '+(cam.brand||cam.protocol||'unknown')+
+    (cam.rtsp_path?' \u00B7 \u2713 path confirmed':'');
+  openConfig({name:cam.name||'Camera '+cam.ip,brand,ip:cam.ip||'',port,username:'admin',password:'admin',path,title:cam.name||'Detected Camera',subtitle});
   document.getElementById('save-btn').textContent='Add Camera';
 }
 
