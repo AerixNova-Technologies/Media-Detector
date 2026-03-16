@@ -823,7 +823,7 @@ def api_staff_export():
 @api_bp.route("/api/attendance/records", methods=["GET"])
 @login_required
 def api_attendance_records():
-    """Return attendance records (joined with staff) with filters and summary."""
+    """Return attendance records from movement_log (individual IN/OUT events)."""
     status = (request.args.get("status") or "").strip().upper()
     q = (request.args.get("q") or "").strip()
     date_from = (request.args.get("date_from") or "").strip()
@@ -844,13 +844,13 @@ def api_attendance_records():
     params = []
 
     if status in {"IN", "OUT"}:
-        where.append("a.status = %s")
+        where.append("m.event_type = %s")
         params.append(status)
     if date_from:
-        where.append("a.timestamp::date >= %s::date")
+        where.append("m.timestamp::date >= %s::date")
         params.append(date_from)
     if date_to:
-        where.append("a.timestamp::date <= %s::date")
+        where.append("m.timestamp::date <= %s::date")
         params.append(date_to)
     if q:
         like = f"%{q}%"
@@ -865,11 +865,13 @@ def api_attendance_records():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+
+        # Count — from movement_log (individual events)
         cur.execute(
             f"""
             SELECT COUNT(*)::int AS total_records
-            FROM attendance a
-            LEFT JOIN staff_profiles s ON s.id = a.staff_id
+            FROM movement_log m
+            LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
             """,
             tuple(params),
@@ -877,37 +879,40 @@ def api_attendance_records():
         count_row = cur.fetchone() or {}
         total_records = count_row.get("total_records", 0) or 0
 
+        # Records — individual IN/OUT events from movement_log
         cur.execute(
             f"""
             SELECT
-                a.id,
-                a.staff_id,
-                COALESCE(s.name, '-') AS name,
-                COALESCE(s.email, '') AS email,
-                COALESCE(s.phone, '') AS phone,
-                a.status,
-                a.in_time,
-                a.out_time,
-                a.timestamp
-            FROM attendance a
-            LEFT JOIN staff_profiles s ON s.id = a.staff_id
+                m.id,
+                m.staff_id,
+                COALESCE(s.name,  '-') AS name,
+                COALESCE(s.email, '')  AS email,
+                COALESCE(s.phone, '')  AS phone,
+                m.event_type           AS status,
+                CASE WHEN m.event_type = 'IN'  THEN m.timestamp ELSE NULL END AS in_time,
+                CASE WHEN m.event_type = 'OUT' THEN m.timestamp ELSE NULL END AS out_time,
+                m.timestamp,
+                m.camera_name
+            FROM movement_log m
+            LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
-            ORDER BY a.timestamp DESC
+            ORDER BY m.timestamp DESC
             LIMIT %s OFFSET %s
             """,
             tuple(params + [page_size, offset]),
         )
         rows = cur.fetchall()
 
+        # Summary — aggregate from movement_log
         cur.execute(
             f"""
             SELECT
                 COUNT(*)::int AS total_records,
-                SUM(CASE WHEN a.status = 'IN' THEN 1 ELSE 0 END)::int AS total_in,
-                SUM(CASE WHEN a.status = 'OUT' THEN 1 ELSE 0 END)::int AS total_out,
-                SUM(CASE WHEN a.timestamp::date = CURRENT_DATE THEN 1 ELSE 0 END)::int AS today_total
-            FROM attendance a
-            LEFT JOIN staff_profiles s ON s.id = a.staff_id
+                SUM(CASE WHEN m.event_type = 'IN'  THEN 1 ELSE 0 END)::int AS total_in,
+                SUM(CASE WHEN m.event_type = 'OUT' THEN 1 ELSE 0 END)::int AS total_out,
+                SUM(CASE WHEN m.timestamp::date = CURRENT_DATE THEN 1 ELSE 0 END)::int AS today_total
+            FROM movement_log m
+            LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
             """,
             tuple(params),
@@ -953,13 +958,13 @@ def api_attendance_export():
     where = []
     params = []
     if status in {"IN", "OUT"}:
-        where.append("a.status = %s")
+        where.append("m.event_type = %s")
         params.append(status)
     if date_from:
-        where.append("a.timestamp::date >= %s::date")
+        where.append("m.timestamp::date >= %s::date")
         params.append(date_from)
     if date_to:
-        where.append("a.timestamp::date <= %s::date")
+        where.append("m.timestamp::date <= %s::date")
         params.append(date_to)
     if q:
         like = f"%{q}%"
@@ -974,17 +979,18 @@ def api_attendance_export():
         cur.execute(
             f"""
             SELECT
-                COALESCE(s.name, '-') AS name,
-                COALESCE(s.email, '') AS email,
-                COALESCE(s.phone, '') AS phone,
-                a.status,
-                a.in_time,
-                a.out_time,
-                a.timestamp
-            FROM attendance a
-            LEFT JOIN staff_profiles s ON s.id = a.staff_id
+                COALESCE(s.name,  '-') AS name,
+                COALESCE(s.email, '')  AS email,
+                COALESCE(s.phone, '')  AS phone,
+                m.event_type           AS status,
+                CASE WHEN m.event_type = 'IN'  THEN m.timestamp ELSE NULL END AS in_time,
+                CASE WHEN m.event_type = 'OUT' THEN m.timestamp ELSE NULL END AS out_time,
+                m.timestamp,
+                m.camera_name
+            FROM movement_log m
+            LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
-            ORDER BY a.timestamp DESC
+            ORDER BY m.timestamp DESC
             """,
             tuple(params),
         )

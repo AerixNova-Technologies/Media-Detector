@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app.db.session import get_db_connection
 from app.services.telegram_service import send_message
-from app.models.telegram_user_model import get_chat_id_by_phone
+from app.services.telegram_user_model import get_chat_id_by_phone
 from app.services.telegram_utils import (
     format_attendance_message,
     is_valid_phone_number,
