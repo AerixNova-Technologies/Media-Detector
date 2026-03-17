@@ -48,6 +48,13 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function fmtDateTime(value) {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString();
+  }
+
   function getFilterDateParams() {
     const now = new Date();
     if (reportFilter.mode === 'today') {
@@ -198,60 +205,27 @@
             <div style="font-size:11px; color:var(--muted); margin-top:3px;">vs previous week</div>
           </div>
         </div>
-        <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:14px;">
-          <div style="border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--surface);">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-              <div style="font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase;">Recent Activity Trend</div>
-              <div style="font-size:11px; color:var(--muted);">${trendData.length} day points</div>
-            </div>
-            <div style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow:auto; padding-right:4px;">
-              ${trendData.length ? trendData.map((t, idx) => `
-                <div style="display:grid; grid-template-columns:56px 1fr auto; align-items:center; gap:10px; padding:7px 8px; border:1px solid var(--border); border-radius:10px; background:${idx === trendData.length - 1 ? 'rgba(111,137,255,.08)' : 'var(--surface2)'};">
-                  <div style="font-size:11px; color:var(--muted); font-weight:700;">${t.date.slice(5)}</div>
-                  <div style="height:8px; background:rgba(111,137,255,.12); border-radius:999px; overflow:hidden;">
-                    <div style="width:${Math.max(6, Math.round((t.total / maxTrend) * 100))}%; height:100%; border-radius:999px; background:linear-gradient(90deg, #6f89ff, #8e66ff);"></div>
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 16px;">Recent Attendance Records</h3>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            ${rows.slice(0, 50).map(r => `
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 16px; border: 1px solid var(--border);">
+                    ${r.status === 'IN' ? '🟢' : '🔴'}
                   </div>
-                  <div style="font-size:11px; color:var(--text); font-weight:800; min-width:28px; text-align:right;">${t.total}</div>
+                  <div>
+                    <div style="font-size: 14px; font-weight: 700; color: var(--text);">${r.name || 'Unknown'}</div>
+                    <div style="font-size: 12px; color: var(--muted);">${r.email || r.phone || ''}</div>
+                  </div>
                 </div>
-              `).join('') : '<div style="font-size:13px; color:var(--muted);">No trend data available.</div>'}
-            </div>
-            <div style="display:flex; gap:16px; margin-top:12px; font-size:12px; color:var(--muted);">
-              <span>Avg/day: <strong style="color:var(--text);">${avgDaily}</strong></span>
-              <span>Peak: <strong style="color:var(--text);">${peakDay ? `${peakDay.total} (${peakDay.date})` : '-'}</strong></span>
-            </div>
-          </div>
-          <div style="border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--surface);">
-            <div style="font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; margin-bottom:10px;">Status Split</div>
-            <div style="display:flex; justify-content:center; margin:10px 0 14px;">
-              <div style="width:140px; height:140px; border-radius:999px; background:conic-gradient(var(--green) 0 ${ringIn}%, #8e66ff ${ringIn}% ${ringIn + ringOut}%, var(--surface2) ${ringIn + ringOut}% 100%); display:flex; align-items:center; justify-content:center;">
-                <div style="width:92px; height:92px; border-radius:999px; background:var(--surface); display:flex; align-items:center; justify-content:center; flex-direction:column;">
-                  <div style="font-size:11px; color:var(--muted);">Total</div>
-                  <div style="font-size:22px; font-weight:800; color:var(--text);">${total}</div>
+                <div style="text-align: right;">
+                  <div style="font-size: 13px; font-weight: 700; color: ${r.status === 'IN' ? 'var(--green)' : 'var(--muted)'};">${r.status === 'IN' ? 'Checked In' : 'Checked Out'}</div>
+                  <div style="font-size: 12px; color: var(--muted);">${fmtDateTime(r.timestamp || r.in_time || r.out_time)}</div>
                 </div>
               </div>
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px;">
-              <div style="padding:8px; border-radius:8px; background:var(--surface2);"><strong style="color:var(--green);">${totalIn}</strong><div style="color:var(--muted);">IN (${inPct}%)</div></div>
-              <div style="padding:8px; border-radius:8px; background:var(--surface2);"><strong style="color:var(--accent);">${totalOut}</strong><div style="color:var(--muted);">OUT (${outPct}%)</div></div>
-            </div>
-          </div>
-        </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:14px;">
-          <div style="border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--surface);">
-            <div style="font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; margin-bottom:10px;">Top Active Members</div>
-            ${topMembers.length ? topMembers.map(([name, count], idx) => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:${idx === topMembers.length - 1 ? 'none' : '1px solid var(--border)'};">
-                <span style="font-size:13px; color:var(--text);">${name}</span>
-                <span style="font-size:12px; padding:3px 8px; border-radius:999px; background:var(--surface2); font-weight:700;">${count}</span>
-              </div>
-            `).join('') : '<div style="font-size:13px; color:var(--muted);">No member activity found.</div>'}
-          </div>
-          <div style="border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--surface);">
-            <div style="font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; margin-bottom:10px;">Insights</div>
-            <div style="font-size:13px; color:var(--text); margin-bottom:10px;">Unique members marked: <strong>${uniqueMembers}</strong></div>
-            <div style="font-size:13px; color:var(--text); margin-bottom:10px;">Current week logs: <strong>${currentWeekCount}</strong></div>
-            <div style="font-size:13px; color:var(--text); margin-bottom:10px;">Previous week logs: <strong>${prevWeekCount}</strong></div>
-            <div style="font-size:13px; color:var(--text);">Attendance momentum: <strong style="color:${weekChange >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtChange(weekChange)}</strong></div>
+            `).join('')}
+            ${rows.length === 0 ? '<div style="padding: 24px; text-align: center; color: var(--muted); font-size: 14px;">No records found for this period.</div>' : ''}
           </div>
         </div>
       </div>

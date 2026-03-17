@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-sidebar-toggle="{{ 'true' if sys_settings.get('sidebar_toggle') == 'true' else 'false' }}">
 
 <head>
   <meta charset="UTF-8" />
@@ -22,7 +22,7 @@
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     // Sidebar toggle gate — set from server setting
-    window.sidebarToggleEnabled = {{ 'true' if sys_settings.get('sidebar_toggle') == 'true' else 'false' }};
+    window.sidebarToggleEnabled = document.documentElement.getAttribute('data-sidebar-toggle') === "true";
   </script>
 </head>
 
@@ -123,6 +123,8 @@
         {% if perms.all or perms.reports_view or perms is not defined or not perms %}
         {{ nav_tab('Reports', '📋', active=(active_page == 'reports'), url='/reports') }}
         {% endif %}
+
+
 
         {% if perms.all or perms.settings_view or perms is not defined or not perms %}
         {{ nav_tab('Settings', '⚙️', active=(active_page == 'settings'), url='/settings') }}
