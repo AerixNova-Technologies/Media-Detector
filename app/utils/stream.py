@@ -79,14 +79,17 @@ class VideoStream:
                 self._cap = cv2.VideoCapture(src)
 
         if self._cap.isOpened():
-            # Request MJPG for local cameras to speed up grab on some devices
-            if not is_url:
-                self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-            self._cap.set(cv2.CAP_PROP_FPS,          self.target_fps)
-            self._cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)   # absolute lowest latency
+            # Request MJPG and set properties - wrap in try/except to prevent hardware driver crashes
+            try:
+                if not is_url:
+                    self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                    
+                self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
+                self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self._cap.set(cv2.CAP_PROP_FPS,          self.target_fps)
+                self._cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)   # absolute lowest latency
+            except Exception as e:
+                log.warning("Could not set all camera properties: %s", e)
             
             # Start the frame-purging background thread
             self._stop_event.clear()

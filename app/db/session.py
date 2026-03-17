@@ -190,6 +190,7 @@ def init_db() -> None:
                 phone         VARCHAR(100),
                 address       TEXT,
                 folder_path   TEXT,
+                staff_id      VARCHAR(100),
                 status        VARCHAR(50) DEFAULT 'active',
                 communication TEXT,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -219,89 +220,71 @@ def init_db() -> None:
             )
         """)
 
-        # Attendance Table (daily summary — one row per person per day)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS attendance (
-                id SERIAL PRIMARY KEY,
-                staff_id INTEGER NOT NULL REFERENCES staff_profiles(id) ON DELETE RESTRICT,
-                status VARCHAR(10) NOT NULL CHECK (status IN ('IN', 'OUT')),
-                in_time TIMESTAMP,
-                out_time TIMESTAMP,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                date DATE DEFAULT CURRENT_DATE,
-                first_in TIMESTAMP,
-                last_out TIMESTAMP,
-                total_duration_minutes INTEGER DEFAULT 0,
-                movement_count INTEGER DEFAULT 0,
-                day_status VARCHAR(10) DEFAULT 'open' CHECK (day_status IN ('open', 'closed'))
-            )
-        """)
-
-        # Alter existing attendance table to add new columns if upgrading
-        for col_sql in [
-            "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE",
-            "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS first_in TIMESTAMP",
-            "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS last_out TIMESTAMP",
-            "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS total_duration_minutes INTEGER DEFAULT 0",
-            "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS movement_count INTEGER DEFAULT 0",
-            "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS day_status VARCHAR(10) DEFAULT 'open'",
-        ]:
-            try:
-                cur.execute(col_sql)
-            except Exception:
-                pass
-
-        # Movement Log Table (every individual IN/OUT event)
+        # Movement Log Table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS movement_log (
                 id SERIAL PRIMARY KEY,
-                staff_id INTEGER NOT NULL REFERENCES staff_profiles(id) ON DELETE CASCADE,
-                event_type VARCHAR(3) NOT NULL CHECK (event_type IN ('IN', 'OUT')),
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                camera_name VARCHAR(255),
-                session_date DATE DEFAULT CURRENT_DATE
+                camera_id VARCHAR(50),
+                image_path TEXT,
+                detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_movement_log_staff_date ON movement_log(staff_id, session_date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_attendance_staff_date ON attendance(staff_id, date)")
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_staff_date_unique ON attendance(staff_id, date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_movement_detected_at ON movement_log(detected_at)")
 
-        # Seed attendance settings defaults
-        for key, val in [
-            ('attendance_exit_timeout_mins', '5'),
-            ('attendance_eod_hour', '19'),
-            ('attendance_notify_exit', 'true'),
-        ]:
-            cur.execute(
-                "INSERT INTO system_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING",
-                (key, val)
-            )
+        # Update: Revert to member_timestamp as requested by user
+        try:
+            cur.execute("ALTER TABLE member_time_stamp RENAME TO member_timestamp")
+            cur.execute("ALTER INDEX IF EXISTS idx_member_time_stamp_staff RENAME TO idx_member_timestamp_staff")
+            cur.execute("ALTER INDEX IF EXISTS idx_member_time_stamp_entry RENAME TO idx_member_timestamp_entry")
+            print(">>> RENAMED: member_time_stamp to member_timestamp")
+        except Exception: pass
 
-        # Member Time Stamp Table (Forensic Entry/Exit Logging)
+        # Member Timestamp Table (Primary Detection & Forensic Log)
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS member_time_stamp (
+            CREATE TABLE IF NOT EXISTS member_timestamp (
                 id SERIAL PRIMARY KEY,
-                person_id INTEGER,
-                staff_id INTEGER REFERENCES staff_profiles(id) ON DELETE SET NULL,
-                staff_name VARCHAR(255),
-                camera_name VARCHAR(255),
+                person_id INTEGER,          -- track id
+                camera_name VARCHAR(100),
+                person_type VARCHAR(20),     -- staff / unknown
+                staff_id INTEGER NULL REFERENCES staff_profiles(id),
+                confidence_score FLOAT,
                 entry_image TEXT,
+                entry_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 exit_image TEXT,
-                merged_image TEXT,
-                entry_time TIMESTAMP,
                 exit_time TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                merged_image TEXT
             )
         """)
-        # Migrate existing rows — add columns if upgrading
-        for col in [
-            "ALTER TABLE member_time_stamp ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES staff_profiles(id) ON DELETE SET NULL",
-            "ALTER TABLE member_time_stamp ADD COLUMN IF NOT EXISTS staff_name VARCHAR(255)",
-        ]:
-            try: cur.execute(col)
-            except Exception: pass
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_mts_staff_id ON member_time_stamp(staff_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_mts_entry_time ON member_time_stamp(entry_time)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_member_timestamp_staff ON member_timestamp(staff_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_member_timestamp_entry ON member_timestamp(entry_time)")
+
+        # Mandatory updates for legacy table if it already exists
+        try:
+            cur.execute("ALTER TABLE member_timestamp ADD COLUMN IF NOT EXISTS person_type VARCHAR(20)")
+            cur.execute("ALTER TABLE member_timestamp ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES staff_profiles(id)")
+            cur.execute("ALTER TABLE member_timestamp ADD COLUMN IF NOT EXISTS confidence_score FLOAT")
+        except Exception: pass
+
+        # Attendance Table (Restore Legacy & New)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS attendance (
+                id SERIAL PRIMARY KEY,
+                staff_id INTEGER REFERENCES staff_profiles(id) ON DELETE CASCADE,
+                attendance_date DATE NOT NULL,
+                first_entry_time TIMESTAMP,
+                last_exit_time TIMESTAMP,
+                status VARCHAR(10),
+                in_time TIMESTAMP,
+                out_time TIMESTAMP,
+                in_image TEXT,
+                out_image TEXT,
+                movement_count INTEGER DEFAULT 0,
+                total_duration_minutes INTEGER DEFAULT 0,
+                day_status VARCHAR(20) DEFAULT 'open',
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_staff_attendance ON attendance(staff_id, attendance_date)")
 
         # Backward-compatible schema alignment for existing attendance tables
         try:
@@ -309,6 +292,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS status VARCHAR(10)")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS in_time TIMESTAMP")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS out_time TIMESTAMP")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS day_status VARCHAR(20) DEFAULT 'open'")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS movement_count INTEGER DEFAULT 0")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS total_duration_minutes INTEGER DEFAULT 0")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         except Exception:
             pass
@@ -370,9 +356,26 @@ def init_db() -> None:
 
         # Mandatory Schema Updates
         try:
+            cur.execute("ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100)")
             cur.execute("ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'")
             cur.execute("ALTER TABLE staff_profiles ADD COLUMN IF NOT EXISTS communication TEXT")
-        except Exception: pass
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS in_image TEXT")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS out_image TEXT")
+            
+            # Ensure attendance table has correct columns for the new logic
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_date DATE")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS first_entry_time TIMESTAMP")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS last_exit_time TIMESTAMP")
+            
+            # Make staff_id nullable in attendance table for 'Unknown' person logging
+            cur.execute("ALTER TABLE attendance ALTER COLUMN staff_id DROP NOT NULL")
+            
+            # Add unique constraint if not exists
+            try:
+                cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_staff_attendance ON attendance(staff_id, attendance_date)")
+            except Exception: pass
+        except Exception as e:
+            log.warning(f"Schema update minor error: {e}")
 
         conn.commit()
         log.info("PostgreSQL database initialized with RBAC support.")

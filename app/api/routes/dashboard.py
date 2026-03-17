@@ -36,6 +36,12 @@ def route_attendance():
     return render_template("attendance.html")
 
 
+@dashboard_bp.route("/member-logs")
+@login_required
+def route_member_logs():
+    return render_template("member_logs.html")
+
+
 @dashboard_bp.route("/reports")
 @login_required
 def route_reports():

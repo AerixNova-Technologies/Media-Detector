@@ -3,8 +3,10 @@
 
 {% block content %}
 <div style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-  <div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-    <div style="margin-bottom: 18px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;">
+  <div
+    style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
+    <div
+      style="margin-bottom: 18px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;">
       <div>
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
           <span style="font-size:24px;">📅</span>
@@ -13,7 +15,12 @@
         <p style="font-size:13px; color: var(--muted); margin:0;">Track and monitor member attendance records</p>
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
-        <button id="toggle-att-summary-btn" class="secondary-btn" onclick="toggleAttendanceSummary()"><span>⌃</span> Hide Summary</button>
+        <div class="period-toggle">
+          <button id="att-period-all" class="toggle-btn active" onclick="setAttPeriod('all')">All</button>
+          <button id="att-period-today" class="toggle-btn" onclick="setAttPeriod('today')">Today</button>
+        </div>
+        <button id="toggle-att-summary-btn" class="secondary-btn" onclick="toggleAttendanceSummary()"><span>⌃</span>
+          Hide Summary</button>
         <div class="att-view-tabs">
           <button class="att-view-tab active" id="tab-events" onclick="switchView('events')">Events</button>
           <button class="att-view-tab" id="tab-forensics" onclick="switchView('forensics')">📸 Forensic Images</button>
@@ -22,111 +29,576 @@
       </div>
     </div>
 
-    <div id="attendance-summary" style="display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:14px; margin-bottom:16px;">
-      <div class="att-card"><div class="att-label">Total Records</div><div class="att-value" id="sum-total">0</div></div>
-      <div class="att-card"><div class="att-label">IN Count</div><div class="att-value" id="sum-in">0</div></div>
-      <div class="att-card"><div class="att-label">OUT Count</div><div class="att-value" id="sum-out">0</div></div>
-      <div class="att-card"><div class="att-label">Today</div><div class="att-value" id="sum-today">0</div></div>
+    <div id="attendance-summary"
+      style="display:grid; grid-template-columns:repeat(3,minmax(170px,1fr)); gap:14px; margin-bottom:16px;">
+      <div class="att-card">
+        <div class="att-label">Total Logs</div>
+        <div class="att-value" id="sum-total">0</div>
+      </div>
+      <div class="att-card">
+        <div class="att-label">Members Present Today</div>
+        <div class="att-value" id="sum-staff">0</div>
+      </div>
+      <div class="att-card">
+        <div class="att-label">Total Today Records</div>
+        <div class="att-value" id="sum-today">0</div>
+      </div>
     </div>
 
     <div class="att-filter-row">
       <div class="att-search-wrap" style="position:relative; min-width:0;">
-        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
-        <input id="att-search" type="text" class="att-input" placeholder="Search by member name, email, phone..." style="padding-left:36px;" oninput="debouncedLoadAttendance()" />
+        <span
+          style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
+        <input id="att-search" type="text" class="att-input" placeholder="Search by member name, email, phone..."
+          style="padding-left:36px;" oninput="debouncedLoadAttendance()" />
       </div>
       <div class="att-range-wrap">
         <span style="font-size:15px;">📅</span>
         <input id="att-date-range" type="text" class="att-input" readonly placeholder="Pick a date range" />
       </div>
-      <select id="att-status" class="att-input" style="width:140px; min-width:140px;" onchange="loadAttendance()">
-        <option value="">All Status</option>
-        <option value="IN">IN</option>
-        <option value="OUT">OUT</option>
-      </select>
+      <!-- Status filter removed as it's no longer used in the new schema -->
     </div>
 
     <div id="view-events">
-    <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden;">
-      <table style="width:100%; border-collapse:collapse;">
-        <thead style="background: var(--surface2);">
-          <tr>
-            <th class="att-th">Member</th>
-            <th class="att-th">Status</th>
-            <th class="att-th">Time</th>
-            <th class="att-th">Camera</th>
-            <th class="att-th">Phone</th>
-            <th class="att-th">Date</th>
-          </tr>
-        </thead>
-        <tbody id="attendance-table-body">
-          <tr><td colspan="6" class="att-empty">Loading attendance records...</td></tr>
-        </tbody>
-      </table>
-    </div>
+      <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead style="background: var(--surface2);">
+            <tr>
+              <th class="log-th">Member ID</th>
+              <th class="att-th">Member</th>
+              <th class="att-th">First Entry</th>
+              <th class="att-th">Last Exit</th>
+              <th class="att-th">Status</th>
+              <th class="att-th">Time</th>
+              <th class="att-th">Camera</th>
+              <th class="att-th">Phone</th>
+              <th class="att-th">Date</th>
+            </tr>
+          </thead>
+          <tbody id="attendance-table-body">
+            <tr>
+              <td colspan="7" class="att-empty">Loading attendance records...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-    <div id="att-pagination-container" style="margin-top:16px; padding:12px 14px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
-    </div>
+      <div id="att-pagination-container"
+        style="margin-top:16px; padding:12px 14px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
+      </div>
     </div><!-- /view-events -->
 
     <!-- Forensic Images View -->
     <div id="view-forensics" style="display:none;">
       <div class="forensics-filter-row">
-        <input id="forensics-search" type="text" class="att-input" placeholder="Search by staff name..." style="max-width:280px;" oninput="loadForensics()"/>
-        <input id="forensics-date" type="date" class="att-input" style="width:160px;" onchange="loadForensics()"/>
+        <input id="forensics-search" type="text" class="att-input" placeholder="Search by staff name..."
+          style="max-width:280px;" oninput="loadForensics()" />
+        <input id="forensics-date" type="date" class="att-input" style="width:160px;" onchange="loadForensics()" />
       </div>
       <div id="forensics-grid" class="forensics-grid">
-        <div class="att-empty" style="padding:40px; text-align:center; color:var(--muted);">Select a date to load forensic records.</div>
+        <div class="att-empty" style="padding:40px; text-align:center; color:var(--muted);">Select a date to load
+          forensic records.</div>
       </div>
     </div>
   </div>
 </div>
 
+<!-- Attendance Details Modal -->
+<div id="att-details-modal" class="modal-overlay">
+  <div class="modal-content" style="max-width: 800px; width: 90%;">
+    <div class="modal-header">
+      <h3 id="modal-title" style="margin:0; font-size:18px;">Attendance Session Details</h3>
+      <button class="close-btn" onclick="closeAttDetails()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body-content">
+      <!-- Content populated by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- Attendance Details Modal -->
+<div id="att-details-modal" class="modal-overlay">
+  <div class="modal-content" style="max-width: 800px; width: 90%;">
+    <div class="modal-header">
+      <h3 id="modal-title" style="margin:0; font-size:18px;">Attendance Session Details</h3>
+      <button class="close-btn" onclick="closeAttDetails()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body-content">
+      <!-- Content populated by JS -->
+    </div>
+  </div>
+</div>
+
 <style>
-  .att-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
-  .att-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
-  .att-value { font-size: 24px; color: var(--text); font-weight: 800; line-height: 1; }
-  .att-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; outline: none; }
-  .att-input:focus { border-color: var(--accent); }
-  .att-filter-row { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:nowrap; }
-  .att-search-wrap { flex:1 1 auto; max-width:560px; }
-  .att-range-wrap { display:flex; align-items:center; gap:8px; border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:0 10px; min-width:230px; }
-  .att-range-wrap .att-input { border:none; background:transparent; padding:9px 0; cursor:pointer; }
-  .att-range-wrap:focus-within { border-color: var(--accent); }
-  .att-th { text-align:left; font-size:12px; color: var(--muted); padding: 12px 14px; border-bottom:1px solid var(--border); text-transform: uppercase; }
-  .att-td { padding: 12px 14px; font-size: 13px; color: var(--text); border-bottom:1px solid var(--border); }
-  .att-empty { padding: 30px; text-align:center; color: var(--muted); font-size: 13px; }
-  .badge-status { display:inline-block; font-size: 11px; font-weight:700; border-radius: 999px; padding: 4px 10px; }
-  .badge-in { background: var(--success-bg); color: var(--green); }
-  .badge-out { background: var(--surface2); color: var(--muted); }
+  .att-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+
+  .att-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .att-value {
+    font-size: 24px;
+    color: var(--text);
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .att-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+
+  .att-input:focus {
+    border-color: var(--accent);
+  }
+
+  .att-filter-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: nowrap;
+  }
+
+  .att-search-wrap {
+    flex: 1 1 auto;
+    max-width: 560px;
+  }
+
+  .att-range-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    padding: 0 10px;
+    min-width: 230px;
+  }
+
+  .att-range-wrap .att-input {
+    border: none;
+    background: transparent;
+    padding: 9px 0;
+    cursor: pointer;
+  }
+
+  .att-range-wrap:focus-within {
+    border-color: var(--accent);
+  }
+
+  .att-th {
+    text-align: left;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+
+  .att-td {
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .att-empty {
+    padding: 30px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .badge-status {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 4px 10px;
+  }
+
+  .badge-in {
+    background: var(--success-bg);
+    color: var(--green);
+  }
+
+  .badge-out {
+    background: var(--surface2);
+    color: var(--muted);
+  }
+
+  .att-clickable-row {
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .att-clickable-row:hover {
+    background: var(--surface2);
+  }
+
+  .period-toggle {
+    display: flex;
+    background: var(--surface2);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .toggle-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 7px;
+    transition: all 0.2s;
+  }
+
+  .toggle-btn.active {
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .att-action-menu {
+    position: relative;
+    display: inline-flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .att-actions-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .att-actions-btn:hover {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .att-action-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 120px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
+    display: none;
+    z-index: 15;
+    overflow: hidden;
+  }
+
+  .att-action-dropdown.active {
+    display: block;
+  }
+
+  .att-action-item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  .att-action-item:hover {
+    background: var(--surface2);
+  }
+
+  /* Modal Styles */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+  }
+
+  .modal-content {
+    background: var(--surface);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+  }
+
+  .modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-body {
+    padding: 24px;
+    overflow-y: auto;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .close-btn:hover {
+    color: var(--text);
+  }
+
+  .details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .details-info {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .details-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .details-value {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .details-img-box {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface2);
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .details-img-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .no-img-text {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
   @media (max-width: 1100px) {
-    .att-filter-row { flex-wrap:wrap; }
-    .att-search-wrap { max-width:none; width:100%; }
+    .att-filter-row {
+      flex-wrap: wrap;
+    }
+
+    .att-search-wrap {
+      max-width: none;
+      width: 100%;
+    }
   }
-  .att-view-tabs { display:flex; gap:2px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px; }
-  .att-view-tab { padding:5px 14px; border:none; border-radius:6px; font-size:12px; font-weight:600; color:var(--muted); background:none; cursor:pointer; transition:all .15s; }
-  .att-view-tab.active { background:var(--surface); color:var(--accent); box-shadow:var(--shadow-sm); }
-  .forensics-filter-row { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
-  .forensics-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; }
-  .forensic-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:box-shadow .15s; }
-  .forensic-card:hover { box-shadow:var(--shadow-md); }
-  .forensic-card-header { padding:12px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
-  .forensic-name { font-size:13px; font-weight:700; color:var(--text); }
-  .forensic-time { font-size:11px; color:var(--muted); }
-  .forensic-images { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); }
-  .forensic-images.has-merged { grid-template-columns:1fr; }
-  .forensic-img-wrap { background:var(--surface2); aspect-ratio:16/9; overflow:hidden; position:relative; }
-  .forensic-img-wrap img { width:100%; height:100%; object-fit:cover; }
-  .forensic-img-label { position:absolute; bottom:0; left:0; right:0; padding:3px 6px; background:rgba(0,0,0,.55); color:white; font-size:10px; font-weight:700; }
-  .forensic-img-placeholder { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:11px; }
-  .forensic-card-footer { padding:8px 14px; font-size:11px; color:var(--muted); display:flex; gap:12px; }
-    .secondary-btn {
-    display:inline-flex; align-items:center; gap:6px;
-    padding:8px 14px; background:var(--surface2); color:var(--text);
-    border:1px solid var(--border); border-radius:8px;
-    font-size:13px; font-weight:600; cursor:pointer; transition:border-color .15s;
+
+  @media (max-width: 768px) {
+    .details-grid {
+      grid-template-columns: 1fr;
+    }
   }
-  .secondary-btn:hover { border-color:var(--accent); color:var(--accent); }
-  .secondary-btn:disabled { opacity:.4; cursor:not-allowed; }
+
+  .att-view-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+  }
+
+  .att-view-tab {
+    padding: 5px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    background: none;
+    cursor: pointer;
+    transition: all .15s;
+  }
+
+  .att-view-tab.active {
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .forensics-filter-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .forensics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .forensic-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: box-shadow .15s;
+  }
+
+  .forensic-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  .forensic-card-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .forensic-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .forensic-time {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .forensic-images {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  .forensic-images.has-merged {
+    grid-template-columns: 1fr;
+  }
+
+  .forensic-img-wrap {
+    background: var(--surface2);
+    aspect-ratio: 16/9;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .forensic-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .forensic-img-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 3px 6px;
+    background: rgba(0, 0, 0, .55);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .forensic-img-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .forensic-card-footer {
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 12px;
+  }
+
+  .secondary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+
+  .secondary-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .secondary-btn:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+  }
 </style>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -138,6 +610,7 @@
   let attPageSize = 10;
   let attTotalRecords = 0;
   let attSummaryHidden = false;
+  let attPeriod = 'all';
 
   function debouncedLoadAttendance() {
     clearTimeout(attendanceSearchTimer);
@@ -154,15 +627,39 @@
 
   function exportAttendance(format) {
     const { dateFrom, dateTo } = getDateRangeValues();
-    const status = document.getElementById('att-status').value;
     const q = document.getElementById('att-search').value.trim();
     const params = new URLSearchParams();
     params.set('format', format || 'excel');
+    params.set('period', attPeriod);
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
-    if (status) params.set('status', status);
     if (q) params.set('q', q);
     window.location.href = '/api/attendance/export?' + params.toString();
+  }
+
+  function setAttPeriod(period) {
+    attPeriod = period === 'today' ? 'today' : 'all';
+    document.querySelectorAll('.period-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`att-period-${attPeriod}`).classList.add('active');
+
+    const rangeWrap = document.querySelector('.att-range-wrap');
+    const rangeInput = document.getElementById('att-date-range');
+    if (attPeriod === 'today') {
+      rangeWrap.style.opacity = '0.5';
+      rangeWrap.style.pointerEvents = 'none';
+
+      // Show today's date in the input for clarity
+      const today = new Date().toISOString().split('T')[0];
+      if (rangeInput) rangeInput.value = today;
+      if (rangeInput?._flatpickr) {
+        rangeInput._flatpickr.setDate(today);
+      }
+    } else {
+      rangeWrap.style.opacity = '1';
+      rangeWrap.style.pointerEvents = 'auto';
+    }
+    attCurrentPage = 1;
+    loadAttendance();
   }
 
   function setAttPageSize(val) {
@@ -196,18 +693,18 @@
         <div style="display:flex; align-items:center; gap:8px;">
           <span>Rows per page:</span>
           <select class="att-input" style="width:78px; padding:4px 6px;" onchange="setAttPageSize(this.value)">
-            <option value="10" ${attPageSize===10?'selected':''}>10</option>
-            <option value="20" ${attPageSize===20?'selected':''}>20</option>
-            <option value="50" ${attPageSize===50?'selected':''}>50</option>
+            <option value="10" ${attPageSize === 10 ? 'selected' : ''}>10</option>
+            <option value="20" ${attPageSize === 20 ? 'selected' : ''}>20</option>
+            <option value="50" ${attPageSize === 50 ? 'selected' : ''}>50</option>
           </select>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <span style="margin-right:6px;">Page ${attCurrentPage} of ${totalPages}</span>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(1)" ${attCurrentPage===1?'disabled':''}>«</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${attCurrentPage-1})" ${attCurrentPage===1?'disabled':''}>‹</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${attCurrentPage+1})" ${attCurrentPage===totalPages?'disabled':''}>›</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${totalPages})" ${attCurrentPage===totalPages?'disabled':''}>»</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(1)" ${attCurrentPage === 1 ? 'disabled' : ''}>«</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${attCurrentPage - 1})" ${attCurrentPage === 1 ? 'disabled' : ''}>‹</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${attCurrentPage + 1})" ${attCurrentPage === totalPages ? 'disabled' : ''}>›</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${totalPages})" ${attCurrentPage === totalPages ? 'disabled' : ''}>»</button>
       </div>
     `;
   }
@@ -242,6 +739,20 @@
 
   function fmtDateTime(value) {
     if (!value) return '-';
+    if (typeof value === 'string') {
+      // Handle our standard TO_CHAR format: YYYY-MM-DD HH:MM:SS
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return value;
+
+      // Handle raw ISO format from API (YYYY-MM-DDTHH:MM:SS...)
+      // Strip 'T', milliseconds, and timezone offsets to prevent shift
+      if (value.includes('T')) {
+        return value.replace('T', ' ').split('.')[0].split('+')[0].split('Z')[0];
+      }
+
+      // If it's already "pretty" (like the user sees now), but we want to avoid further shifts
+      if (value.includes(',') && (value.includes('pm') || value.includes('am'))) return value;
+    }
+
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '-';
     return d.toLocaleString();
@@ -250,31 +761,127 @@
     if (!value) return '-';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
   function fmtDate(value) {
     if (!value) return '-';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'});
+    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function setSummary(summary) {
     document.getElementById('sum-total').innerText = summary?.total_records ?? 0;
-    document.getElementById('sum-in').innerText = summary?.total_in ?? 0;
-    document.getElementById('sum-out').innerText = summary?.total_out ?? 0;
+    document.getElementById('sum-staff').innerText = summary?.total_staff ?? 0;
     document.getElementById('sum-today').innerText = summary?.today_total ?? 0;
+  }
+
+  function calcDuration(start, end) {
+    if (!start || !end) return '-';
+    const s = new Date(start);
+    const e = new Date(end);
+    const diff = e - s;
+    if (diff < 0) return '-';
+    const mins = Math.floor(diff / 60000);
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`;
+  }
+
+  function openAttDetails(r) {
+    const modal = document.getElementById('att-details-modal');
+    const content = document.getElementById('modal-body-content');
+
+    content.innerHTML = `
+      <div class="details-grid">
+        <div class="details-info">
+          <div><div class="details-label">Member Name</div><div class="details-value" style="font-size:18px; font-weight:700;">${r.name || 'Unknown'}</div></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div><div class="details-label">Member ID</div><div class="details-value">${r.display_id || '-'}</div></div>
+            <div><div class="details-label">Phone</div><div class="details-value">${r.phone || '-'}</div></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div><div class="details-label">In Time</div><div class="details-value">${fmtDateTime(r.in_time)}</div></div>
+            <div><div class="details-label">Out Time</div><div class="details-value">${fmtDateTime(r.out_time)}</div></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div><div class="details-label">Stay Duration</div><div class="details-value" style="color:var(--accent); font-weight:700;">${calcDuration(r.in_time, r.out_time)}</div></div>
+            <div><div class="details-label">Current Status</div><span class="badge-status ${r.status === 'IN' ? 'badge-in' : 'badge-out'}">${r.status || '-'}</span></div>
+          </div>
+          <div class="details-label">Email</div><div class="details-value">${r.email || '-'}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <div>
+            <div class="details-label">Entry Verification Snapshot</div>
+            <div class="details-img-box">
+              ${r.in_image ? `<img src="/${r.in_image}" alt="In Image" onclick="window.open('/${r.in_image}', '_blank')">` : '<span class="no-img-text">No Entry Image Captured</span>'}
+            </div>
+          </div>
+          <div>
+            <div class="details-label">Exit Verification Snapshot</div>
+            <div class="details-img-box">
+              ${r.out_image ? `<img src="/${r.out_image}" alt="Out Image" onclick="window.open('/${r.out_image}', '_blank')">` : '<span class="no-img-text">No Exit Image Captured</span>'}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    modal.classList.add('active');
+  }
+
+  function closeAttDetails() {
+    document.getElementById('att-details-modal').classList.remove('active');
+  }
+
+  function openAttDetailsFromPayload(payload) {
+    try {
+      openAttDetails(JSON.parse(decodeURIComponent(payload)));
+    } catch (error) {
+      console.error('Failed to open attendance details:', error);
+    }
+  }
+
+  function closeAttActionMenus() {
+    document.querySelectorAll('.att-action-dropdown.active').forEach(m => m.classList.remove('active'));
+  }
+
+  function toggleAttActionMenu(event, menuId) {
+    event.stopPropagation();
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    const alreadyOpen = menu.classList.contains('active');
+    closeAttActionMenus();
+    if (!alreadyOpen) menu.classList.add('active');
   }
 
   function renderAttendanceRows(records) {
     const tbody = document.getElementById('attendance-table-body');
     if (!records || !records.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="att-empty">No attendance records found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="att-empty">No attendance records found.</td></tr>';
       return;
     }
 
+    tbody.innerHTML = records.map((r, idx) => {
+      const payload = encodeURIComponent(JSON.stringify(r));
+      const menuId = `att-action-menu-${r.id || idx}`;
+      return `
+      <tr class="att-clickable-row" onclick="openAttDetailsFromPayload('${payload}')">
+        <td class="att-td"><span style="font-family:monospace; font-weight:600; color:var(--accent);">${r.display_id || '-'}</span></td>
+        <td class="att-td"><strong>${r.name || '-'}</strong><div style="font-size:11px; color:var(--muted);">${r.email || ''}</div></td>
+        <td class="att-td">${fmtDateTime(r.in_time)}</td>
+        <td class="att-td">${fmtDateTime(r.out_time)}</td>
+        <td class="att-td"><span class="badge-status badge-in">PRESENT</span></td>
+        <td class="att-td" style="white-space:nowrap;">${r.timestamp || '-'}</td>
+        <td class="att-td" style="text-align:center;" onclick="event.stopPropagation()">
+          <div class="att-action-menu">
+            <button class="att-actions-btn" onclick="toggleAttActionMenu(event, '${menuId}')">⋮</button>
+            <div id="${menuId}" class="att-action-dropdown">
+              <button class="att-action-item" onclick="event.stopPropagation(); openAttDetailsFromPayload('${payload}'); closeAttActionMenus();">Details</button>
+            </div>
+          </div>
+        </td>
     tbody.innerHTML = records.map(r => `
-      <tr>
+        < tr >
         <td class="att-td">
           <strong>${r.name || '-'}</strong>
           <div style="font-size:11px; color:var(--muted);">${r.email || ''}</div>
@@ -288,25 +895,25 @@
         <td class="att-td" style="font-size:12px; color:var(--muted);">${r.camera_name || '—'}</td>
         <td class="att-td">${r.phone || '-'}</td>
         <td class="att-td" style="font-size:12px; color:var(--muted);">${fmtDate(r.timestamp)}</td>
-      </tr>
-    `).join('');
+      </tr >
+        `;
+    }).join('');
   }
 
   async function loadAttendance() {
     const { dateFrom, dateTo } = getDateRangeValues();
-    const status = document.getElementById('att-status').value;
     const q = document.getElementById('att-search').value.trim();
 
     const params = new URLSearchParams();
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
-    if (status) params.set('status', status);
     if (q) params.set('q', q);
+    params.set('period', attPeriod);
     params.set('page', String(attCurrentPage));
     params.set('page_size', String(attPageSize));
 
     const tbody = document.getElementById('attendance-table-body');
-    tbody.innerHTML = '<tr><td colspan="6" class="att-empty">Loading attendance records...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="att-empty">Loading attendance records...</td></tr>';
 
     try {
       const res = await fetch('/api/attendance/records?' + params.toString());
@@ -318,7 +925,7 @@
       renderAttendanceRows(data.records || []);
       renderAttPagination((data.pagination && data.pagination.total_records) || 0);
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="6" class="att-empty" style="color: var(--red);">Failed to load attendance: ${e.message}</td></tr>`;
+      tbody.innerHTML = `< tr > <td colspan="7" class="att-empty" style="color: var(--red);">Failed to load attendance: ${e.message}</td></tr > `;
       setSummary({ total_records: 0, total_in: 0, total_out: 0, today_total: 0 });
       renderAttPagination(0);
     }
@@ -355,7 +962,7 @@
       if (!d.success) throw new Error(d.error);
       renderForensics(d.records || []);
     } catch(e) {
-      grid.innerHTML = `<div class="att-empty" style="padding:40px;text-align:center;color:var(--red);">Failed: ${e.message}</div>`;
+      grid.innerHTML = `< div class="att-empty" style = "padding:40px;text-align:center;color:var(--red);" > Failed: ${ e.message }</div > `;
     }
   }
 
@@ -370,13 +977,13 @@
       const exitTime  = r.exit_time  ? new Date(r.exit_time).toLocaleTimeString()  : 'Still in';
       const hasMerged = !!r.merged_image;
       const imgSection = hasMerged ? `
-        <div class="forensic-images has-merged">
+        < div class="forensic-images has-merged" >
           <div class="forensic-img-wrap">
-            <img src="${r.merged_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">Image not found</div>'" />
-            <div class="forensic-img-label">ENTRY → EXIT</div>
-          </div>
-        </div>` : `
-        <div class="forensic-images">
+            <img src="${r.merged_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\" forensic-img-placeholder\">Image not found</div>'" />
+              < div class="forensic-img-label" > ENTRY → EXIT</div >
+          </div >
+        </div > ` : `
+        < div class="forensic-images" >
           <div class="forensic-img-wrap">
             ${r.entry_image
               ? `<img src="${r.entry_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">No image</div>'" /><div class="forensic-img-label">🟢 ENTRY</div>`
@@ -387,26 +994,27 @@
               ? `<img src="${r.exit_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">No image</div>'" /><div class="forensic-img-label">🔴 EXIT</div>`
               : `<div class="forensic-img-placeholder">No exit image</div>`}
           </div>
-        </div>`;
+        </div > `;
       return `
-        <div class="forensic-card">
+        < div class="forensic-card" >
           <div class="forensic-card-header">
             <div class="forensic-name">${r.staff_name || 'Unknown'}</div>
             <div class="forensic-time">${entryTime}</div>
           </div>
-          ${imgSection}
-          <div class="forensic-card-footer">
-            <span>📹 ${r.camera_name || '—'}</span>
-            <span>🟢 ${entryTime}</span>
-            <span>🔴 ${exitTime}</span>
-          </div>
-        </div>`;
+          ${ imgSection }
+      <div class="forensic-card-footer">
+        <span>📹 ${r.camera_name || '—'}</span>
+        <span>🟢 ${entryTime}</span>
+        <span>🔴 ${exitTime}</span>
+      </div>
+        </div >`;
     }).join('');
   }
 
 
   document.addEventListener('DOMContentLoaded', () => {
     initDateRangePicker();
+    document.addEventListener('click', closeAttActionMenus);
     loadAttendance();
   });
 </script>

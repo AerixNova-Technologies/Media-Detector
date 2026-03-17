@@ -41,6 +41,7 @@ import numpy as np
 from app.core import config as cfg
 from app.core.data_types import AIResult, TrackResult, scale_box
 from app.db.session import get_db_connection
+from app.services.attendance_service import log_movement, log_person, track_staff_attendance
 from app.services.ai.action_detection import ActionDetector
 from app.services.ai.emotion_detection import EmotionDetector
 from app.services.ai.face_detection import FaceDetector
@@ -152,7 +153,9 @@ class AIPipeline(threading.Thread):
         self._track_start_time:  dict[int, float]      = {}
         self._exit_taken: set[int] = set()
         self._db_sessions: dict[int, int] = {}
+        self._entry_filenames: dict[int, str] = {}
         self._exit_filenames: dict[int, str] = {}
+        self._last_face_reload = time.monotonic()
         os.makedirs(cfg.SNAPSHOT_DIR, exist_ok=True)
 
         log.info("AI pipeline: all models ready.")
@@ -246,17 +249,18 @@ class AIPipeline(threading.Thread):
         except Exception as e:
             log.error("_link_identity_to_snapshot error: %s", e)
 
-    def _db_log_entry(self, tid, filename):
+    def _db_log_entry(self, tid, filename, person_type="unknown", staff_id=None, confidence=0.0):
         """Creates a forensic entry record in the database."""
         try:
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO member_time_stamp (person_id, camera_name, entry_image, entry_time)
-                VALUES (%s, %s, %s, %s) RETURNING id
-            """, (tid, self.camera_name, filename, datetime.now()))
+                INSERT INTO member_timestamp (person_id, camera_name, entry_image, entry_time, person_type, staff_id, confidence_score)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+            """, (tid, self.camera_name, filename, datetime.now(), person_type, staff_id, confidence))
             row = cur.fetchone()
             self._db_sessions[tid] = row['id']
+            self._entry_filenames[tid] = filename
             conn.commit()
             conn.close()
         except Exception as e:
@@ -269,7 +273,7 @@ class AIPipeline(threading.Thread):
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("""
-                UPDATE member_time_stamp 
+                UPDATE member_timestamp 
                 SET exit_image = %s, merged_image = %s, exit_time = %s
                 WHERE id = %s
             """, (exit_file, merged_file, datetime.now(), self._db_sessions[tid]))
@@ -328,9 +332,9 @@ class AIPipeline(threading.Thread):
                     fx1, fy1, fx2, fy2 = (int(v) for v in face_bbox)
                     face_crop = ai_frame[max(0,fy1):min(ai_frame.shape[0],fy2), max(0,fx1):min(ai_frame.shape[1],fx2)]
                     if face_crop.size > 0:
-                        name = self.face_rec.recognize(face_crop, tid)
-                        self.face_rec._cache[tid] = name
-                        return name
+                        res = self.face_rec.recognize(face_crop, tid)
+                        self.face_rec._cache[tid] = res
+                        return res["name"]
             except Exception as e:
                 log.debug("Rec task error: %s", e)
             return "Unknown"
@@ -351,9 +355,20 @@ class AIPipeline(threading.Thread):
                 AI_TOGGLES = {"person": True, "action": True, "emotion": True}
 
             self._frame_idx += 1
+            now = time.monotonic()
+            
+            # 0. Periodic Face Reload (Every 2 minutes)
+            if now - self._last_face_reload > 120:
+                log.info("AI: Reloading staff faces from folder...")
+                self.face_rec.load_from_folder(self.face_rec.db_path)
+                self._last_face_reload = now
+
             ai_h, ai_w = ai_frame.shape[:2]
             sx = full_w / ai_w
             sy = full_h / ai_h
+
+            if self._frame_idx % 10 == 0:
+                log.info("AI: Processing frame #%d", self._frame_idx)
 
             # 1. Motion gate
             motion, mask = self.motion_det.detect(ai_frame)
@@ -361,14 +376,15 @@ class AIPipeline(threading.Thread):
             if motion:
                 if (now - self._last_motion_time) > cfg.MOTION_COOLDOWN_SEC:
                     _total_motion_events += 1
+                    # Log movement
+                    log_movement(self.camera_name, "") # Image path can be added if captured
                 self._last_motion_time = now
 
             # Always detect people if toggle is on (don't rely strictly on motion gate)
             if AI_TOGGLES.get("person", True):
                 if self._frame_idx % max(1, cfg.YOLO_SKIP_FRAMES) == 0:
                     self._last_detections = self.person_det.detect(ai_frame)
-                    if self._frame_idx % 30 == 0:
-                        log.info("AI: YOLO found %d persons", len(self._last_detections))
+                    log.info("AI: YOLO found %d persons", len(self._last_detections))
             else:
                 self._last_detections = []
 
@@ -380,6 +396,8 @@ class AIPipeline(threading.Thread):
             # 3. Tracker
             raw_tracks = self.tracker.update(self._last_detections, ai_frame)
             active_ids = {t.track_id for t in raw_tracks}
+            if len(active_ids) > 0 or len(self._last_detections) > 0:
+                log.info("AI: Tracker active_ids: %s", list(active_ids))
             
             # 1. New Entrants
             for tid in active_ids:
@@ -410,9 +428,23 @@ class AIPipeline(threading.Thread):
                     
                     self._db_log_exit(tid, exit_file, merged_file)
                     
+                    # Automated OUT Attendance
+                    staff_res = self.face_rec._cache.get(tid, {"name": "Unknown"})
+                    staff_name = staff_res.get("name", "Unknown")
+                    
+                    try:
+                        # Mark OUT even for Unknown persons
+                        mark_attendance_name = staff_name if staff_name != "Unknown" else "Unknown Person"
+                        img_url = f"static/uploads/snapshots/{exit_file}" if exit_file else None
+                        mark_attendance(employee_name=mark_attendance_name, phone_number="", status="OUT", image_path=img_url)
+                        log.info(f"Attendance: Marked OUT for {mark_attendance_name} (ID: {tid})")
+                    except Exception as e:
+                        log.error(f"Failed to mark dynamic OUT attendance: {e}")
+
                     # Cleanup
                     for d in [self._entry_best_frames, self._exit_best_frames, self._best_entry_scores, 
-                              self._best_exit_scores, self._track_start_time, self._db_sessions, self._exit_filenames]:
+                              self._best_exit_scores, self._track_start_time, self._db_sessions, 
+                              self._entry_filenames, self._exit_filenames, self._track_att_ids]:
                         if tid in d: del d[tid]
                     if tid in self._exit_taken: self._exit_taken.remove(tid)
 
@@ -428,7 +460,12 @@ class AIPipeline(threading.Thread):
                         snap, filename = self._save_snapshot(ai_frame, tid, mode="ENTRY")
                         if snap is not None: 
                             self._entry_best_frames[tid] = snap
-                            self._db_log_entry(tid, filename)
+                            
+                            # Initial entry log - might be unknown at first
+                            cached_res = self.face_rec._cache.get(tid, {"name": "Unknown", "id": None})
+                            p_type = "staff" if cached_res["name"] != "Unknown" else "unknown"
+                            s_id = cached_res.get("id")
+                            self._db_log_entry(tid, filename, person_type=p_type, staff_id=s_id)
 
                 stay_duration = now - self._track_start_time.get(tid, now)
                 bx1, by1, bx2, by2 = track.bbox
@@ -496,25 +533,61 @@ class AIPipeline(threading.Thread):
                     emotion = self.emotion_det._cache.get(tid, "")
 
                 if AI_TOGGLES.get("person", True):
-                    cached_identity = self.face_rec._cache.get(tid, "")
-                    identity = cached_identity
+                    cached_res = self.face_rec._cache.get(tid, {"name": "Unknown", "display_id": ""})
+                    identity = cached_res["name"]
+                    display_id = cached_res["display_id"]
                     
                     try:
-                        if identity and identity != "Unknown":
-                            # Heartbeat to attendance tracker — handles IN/OUT/EOD automatically
-                            try:
-                                self.attendance_tracker.heartbeat(identity, self.camera_name)
-                            except Exception as att_err:
-                                log.warning("Attendance heartbeat failed for %s: %s", identity, att_err)
-                            # First-sighting: link identity to member_time_stamp forensic record
-                            if tid not in self._notified_identities:
-                                self._notified_identities.add(tid)
-                                try:
-                                    self._link_identity_to_snapshot(tid, identity)
-                                except Exception as link_err:
-                                    log.warning("Snapshot identity link failed: %s", link_err)
+                        is_unknown = (identity == "" or identity == "Unknown")
                         
-                        is_unknown = (cached_identity == "" or cached_identity == "Unknown")
+                        # Automated Attendance (for BOTH Staff and Unknown)
+                        if tid not in self._notified_identities:
+                            try:
+                                person_type = "staff" if not is_unknown else "unknown"
+                                staff_db_id = cached_res.get("id")
+                                
+                                # Update existing session if it was previously logged as unknown
+                                if tid in self._db_sessions:
+                                    try:
+                                        conn = get_db_connection()
+                                        cur = conn.cursor()
+                                        cur.execute("""
+                                            UPDATE member_timestamp 
+                                            SET person_type = %s, staff_id = %s
+                                            WHERE id = %s
+                                        """, (person_type, staff_db_id, self._db_sessions[tid]))
+                                        conn.commit()
+                                        conn.close()
+                                    except Exception as e:
+                                        log.error(f"Failed to update session identity: {e}")
+                                else:
+                                    # Fallback: if no session exists yet, log it
+                                    log_person(self.camera_name, person_type, staff_db_id, "", 0.0)
+                                
+                                if not is_unknown and staff_db_id:
+                                    # If staff, track attendance
+                                    track_staff_attendance(staff_db_id)
+                                    # Send notification for staff match
+                                    self.notifier.send_message(f"✅ *MATCH DETECTED*: Member **{identity}** recognized on {self.camera_name}.")
+                                
+                                self._notified_identities.add(tid)
+                                log.info(f"Attendance/Logging: Processed {identity} (ID: {tid})")
+                            except Exception as e:
+                                log.error(f"Failed to mark dynamic IN attendance: {e}")
+                        
+                        # Handle Delayed Identity Discovery
+                        elif not is_unknown and tid in self._track_att_ids:
+                             # We previously marked as Unknown, but now we have a name!
+                             att_id = self._track_att_ids[tid]
+                             # We'll check if we actually need to update (simple check: if name was "Unknown")
+                             # To keep it simple, we just try to update. update_attendance_name is safe.
+                             if update_attendance_name(att_id, identity):
+                                 log.info(f"Attendance: Updated record {att_id} with discovered name: {identity}")
+                                 # Send notification now that we know who they are
+                                 self.notifier.send_message(f"✅ *MATCH DISCOVERED*: Member **{identity}** matched for active session on {self.camera_name}.")
+                                 # Remove from track_att_ids so we don't spam updates
+                                 del self._track_att_ids[tid]
+                        
                         active_rec_tasks = sum(1 for f in self._rec_futures.values() if not f.done())
                         if (is_unknown or (self._frame_idx % 300 == 0)) and active_rec_tasks < 2:
                             self._submit_rec(ai_frame, bbox, tid)
@@ -528,6 +601,7 @@ class AIPipeline(threading.Thread):
                     bbox_full=scale_box(bbox, sx, sy),
                     face_bbox_full=None,
                     emotion=emotion, action=action, identity=identity,
+                    display_id=display_id if 'display_id' in locals() else ""
                 ))
 
             # 5. Cache cleanup

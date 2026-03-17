@@ -25,6 +25,7 @@ class TrackResult:
     emotion:        str                   # e.g. "happy", "neutral", ""
     action:         str                   # e.g. "🧍 standing", "🏃 running"
     identity:       str = ""              # recognized staff name, or ""
+    display_id:     str = ""              # staff_id from DB, or ""
 
 
 @dataclass

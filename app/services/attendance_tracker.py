@@ -188,9 +188,9 @@ class AttendanceTracker:
                 """
                 UPDATE attendance
                 SET day_status = 'closed',
-                    last_out   = COALESCE(last_out, timestamp)
+                    last_exit_time   = COALESCE(last_exit_time, timestamp)
                 WHERE day_status = 'open'
-                  AND date < %s
+                  AND attendance_date < %s
                 """,
                 (today,),
             )
@@ -249,10 +249,10 @@ class AttendanceTracker:
                 cur.execute(
                     """
                     INSERT INTO attendance
-                        (staff_id, status, in_time, timestamp, date, first_in,
+                        (staff_id, status, in_time, timestamp, attendance_date, first_entry_time,
                          movement_count, day_status)
                     VALUES (%s, 'IN', %s, %s, %s, %s, 1, 'open')
-                    ON CONFLICT (staff_id, date) DO UPDATE
+                    ON CONFLICT (staff_id, attendance_date) DO UPDATE
                         SET status         = 'IN',
                             in_time        = EXCLUDED.in_time,
                             movement_count = attendance.movement_count + 1,
@@ -269,13 +269,13 @@ class AttendanceTracker:
                 cur.execute(
                     """
                     INSERT INTO attendance
-                        (staff_id, status, out_time, timestamp, date, last_out,
+                        (staff_id, status, out_time, timestamp, attendance_date, last_exit_time,
                          total_duration_minutes, day_status)
                     VALUES (%s, 'OUT', %s, %s, %s, %s, %s, 'open')
-                    ON CONFLICT (staff_id, date) DO UPDATE
+                    ON CONFLICT (staff_id, attendance_date) DO UPDATE
                         SET status                 = 'OUT',
                             out_time               = EXCLUDED.out_time,
-                            last_out               = EXCLUDED.last_out,
+                            last_exit_time         = EXCLUDED.last_exit_time,
                             total_duration_minutes = attendance.total_duration_minutes + %s
                     """,
                     (staff_id, wall_time, wall_time, today,
@@ -319,7 +319,7 @@ class AttendanceTracker:
                 UPDATE attendance SET day_status = 'closed'
                 WHERE staff_id = (
                     SELECT id FROM staff_profiles WHERE name = %s LIMIT 1
-                ) AND date = %s
+                ) AND attendance_date = %s
                 """,
                 (identity, today),
             )

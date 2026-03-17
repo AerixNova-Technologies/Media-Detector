@@ -63,7 +63,7 @@ class CameraManager:
 
         # Determine upload folder for face recognition DB
         upload_folder = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
             "static", "uploads",
         )
 
@@ -247,6 +247,7 @@ class CameraManager:
                     "emotion":  t.emotion  or "–",
                     "action":   t.action   or "–",
                     "identity": t.identity or "",
+                    "staff_id": t.display_id or "",
                 }
                 for t in tracks
             ],

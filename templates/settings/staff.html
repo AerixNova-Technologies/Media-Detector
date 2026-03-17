@@ -69,6 +69,7 @@
           <thead style="background: var(--surface); text-align:left;">
             <tr>
               <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 220px;">Member</th>
+              <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 120px;">Staff ID</th>
               <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 150px;">Phone</th>
               <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 250px;">Email</th>
               <th style="padding:14px 20px; font-size:12px; font-weight:700; color: var(--muted); text-transform:uppercase; width: 110px;">Status</th>
@@ -101,6 +102,8 @@
           <h4 style="margin-bottom:16px; font-size:15px; color: var(--text);">Member Details</h4>
           <div class="s-field"><label>Name *</label><input type="text" id="staff-name-input"
               placeholder="e.g. John Doe" onchange="handleMemberPrimaryFieldChange()" /></div>
+          <div class="s-field"><label>Staff ID</label><input type="text" id="staff-id-input"
+              placeholder="Leave empty to auto-generate" onchange="autoSaveMember()" /></div>
           <div class="s-field"><label>Email Address</label><input type="email" id="staff-email-input"
               placeholder="john@example.com" onchange="autoSaveMember()" /></div>
           <div class="s-field"><label>Phone Number</label><input type="text" id="staff-phone-input"
@@ -543,7 +546,7 @@
   </style>
 
   <script>
-    document.addEventListener('DOMContentLoaded', loadSavedStaff);
+    document.addEventListener('DOMContentLoaded', initializeStaffPage);
 
     let selectedFiles = [];
     window.currentEditStaff = "";
@@ -552,6 +555,18 @@
     let currentPage = 1;
     let pageSize = 10;
     let isSummaryHidden = false;
+    let deepLinkMemberId = null;
+    let deepLinkMemberName = '';
+    let deepLinkHandled = false;
+
+    function initializeStaffPage() {
+      const params = new URLSearchParams(window.location.search);
+      const memberIdRaw = params.get('member_id');
+      const memberNameRaw = (params.get('member_name') || '').trim();
+      deepLinkMemberId = memberIdRaw && !Number.isNaN(Number(memberIdRaw)) ? Number(memberIdRaw) : null;
+      deepLinkMemberName = memberNameRaw;
+      loadSavedStaff();
+    }
 
     function escapeSingleQuotedJs(value) {
       return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -783,6 +798,7 @@
 
       const fd = new FormData();
       fd.append('staff_name', nameInput);
+      fd.append('staff_id', document.getElementById('staff-id-input').value.trim());
       if (isEditMode) {
         fd.append('is_update', 'true');
         fd.append('original_name', originalName);
@@ -800,6 +816,7 @@
           if (isEditMode) {
             syncStaffInMemory(originalName, {
               name: nameInput,
+              staff_id: document.getElementById('staff-id-input').value.trim(),
               email: emailInput,
               phone: phoneInput,
               address: addressInput,
@@ -829,6 +846,7 @@
 
       const fd = new FormData();
       fd.append('staff_name', nameInput);
+      fd.append('staff_id', document.getElementById('staff-id-input').value.trim());
       fd.append('is_update', 'true');
       fd.append('original_name', currentEditStaff);
       fd.append('email', emailInput);
@@ -847,6 +865,7 @@
           const previousName = currentEditStaff;
           syncStaffInMemory(previousName, {
             name: nameInput,
+            staff_id: document.getElementById('staff-id-input').value.trim(),
             email: emailInput,
             phone: phoneInput,
             address: addressInput,
@@ -881,6 +900,7 @@
     function clearStaffForm() {
       selectedFiles = [];
       document.getElementById('staff-name-input').value = "";
+      document.getElementById('staff-id-input').value = "";
       document.getElementById('staff-email-input').value = "";
       document.getElementById('staff-phone-input').value = "";
       document.getElementById('staff-address-input').value = "";
@@ -925,10 +945,29 @@
         const data = await res.json();
         allStaff = data.profiles || [];
         renderData();
+        tryOpenDeepLinkedMember();
       } catch (e) {
         gallery.innerHTML = '<span style="color:#ef4444;">Failed to load.</span>';
         tableBody.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:var(--error-bg);">Failed to load.</td></tr>';
       }
+    }
+
+    function tryOpenDeepLinkedMember() {
+      if (deepLinkHandled) return;
+      if (deepLinkMemberId === null && !deepLinkMemberName) return;
+
+      let target = null;
+      if (deepLinkMemberId !== null) {
+        target = allStaff.find(p => Number(p.id) === deepLinkMemberId) || null;
+      }
+      if (!target && deepLinkMemberName) {
+        const wanted = deepLinkMemberName.toLowerCase();
+        target = allStaff.find(p => String(p.name || '').toLowerCase() === wanted) || null;
+      }
+      if (!target) return;
+
+      deepLinkHandled = true;
+      openStaffEdit(target.name, Number.isInteger(target.id) ? target.id : null);
     }
 
     function renderStaffTable(profiles) {
@@ -956,6 +995,9 @@
               <div style="font-size:11px; color: var(--muted); padding-left:9px;">${p.photo_count} Reference Photos</div>
             </div>
           </div>
+        </td>
+        <td style="padding:14px 20px;">
+           <span style="font-family:monospace; font-weight:600; color:var(--accent);">${p.staff_id || '-'}</span>
         </td>
         <td style="padding:14px 20px;">
           <input type="text" class="inline-input" value="${p.phone || ''}" placeholder="Enter Phone"
@@ -1053,6 +1095,7 @@
                style="width:100%; height:100%; object-fit:cover;">
         </div>
         <div style="font-size:14px; font-weight:600; color: var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${p.name}</div>
+        <div style="font-size:11px; font-family:monospace; color: var(--accent); margin-bottom:2px;">ID: ${p.staff_id || '-'}</div>
         <div style="font-size:11px; color: var(--muted); margin-top:2px;">${p.phone || (p.email || p.photo_count + ' Photos')}</div>
         <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:12px;">
             <div onclick="event.stopPropagation()">
@@ -1210,6 +1253,7 @@
         window.currentEditStaff = loadedName;
         document.getElementById('staff-original-name').value = loadedName;
         document.getElementById('staff-name-input').value = loadedName;
+        document.getElementById('staff-id-input').value = data.staff.staff_id || "";
         document.getElementById('staff-email-input').value = data.staff.email;
         document.getElementById('staff-phone-input').value = data.staff.phone;
         document.getElementById('staff-address-input').value = data.staff.address;

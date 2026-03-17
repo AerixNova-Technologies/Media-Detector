@@ -90,6 +90,7 @@ def create_app() -> Flask:
     from app.api.routes.dashboard import dashboard_bp
     from app.api.routes.user_mgmt import user_mgmt_bp
     from app.api.routes.telegram_routes import telegram_bp
+    from app.api.routes.attendance_api import attendance_bp
 
     flask_app.register_blueprint(auth_bp)
     flask_app.register_blueprint(dashboard_bp)
@@ -97,6 +98,7 @@ def create_app() -> Flask:
     flask_app.register_blueprint(detection_bp)
     flask_app.register_blueprint(user_mgmt_bp)
     flask_app.register_blueprint(telegram_bp)
+    flask_app.register_blueprint(attendance_bp)
 
     # ── Graceful shutdown ────────────────────────────────────────────────────
     atexit.register(cam_mgr.stop_all)

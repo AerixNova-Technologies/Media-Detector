@@ -32,6 +32,7 @@ import shutil
 
 from flask import Blueprint, jsonify, request, session, url_for
 from werkzeug.utils import secure_filename
+from datetime import datetime
 
 from app.core.security import login_required
 from app.db.session import get_db_connection
@@ -314,8 +315,42 @@ def api_upload_staff():
 
     email = request.form.get("email", "")
     phone = request.form.get("phone", "")
+    staff_id_val = request.form.get("staff_id", "").strip()
     address = request.form.get("address", "")
     communication = request.form.get("communication", "") # JSON string from frontend
+
+    # Auto-generate Staff ID if missing
+    if not staff_id_val:
+        from datetime import datetime
+        today_prefix = datetime.now().strftime("STF-%Y%m%d-")
+        
+        conn_temp = get_db_connection()
+        cur_temp = conn_temp.cursor()
+        try:
+            # Find the highest sequence number for today
+            cur_temp.execute(
+                "SELECT staff_id FROM staff_profiles WHERE staff_id LIKE %s ORDER BY staff_id DESC LIMIT 1",
+                (today_prefix + "%",)
+            )
+            last_id_row = cur_temp.fetchone()
+            if last_id_row and last_id_row['staff_id']:
+                last_id = last_id_row['staff_id']
+                try:
+                    last_seq = int(last_id.split('-')[-1])
+                    new_seq = last_seq + 1
+                except (IndexError, ValueError):
+                    new_seq = 1
+            else:
+                new_seq = 1
+            
+            staff_id_val = f"{today_prefix}{new_seq:04d}"
+        except Exception as e:
+            log.error("Error auto-generating staff_id: %s", e)
+            # fallback to timestamp if sequence fails
+            staff_id_val = datetime.now().strftime("STF-%Y%m%d%H%M%S")
+        finally:
+            cur_temp.close()
+            conn_temp.close()
 
     saved_count = 0
     for file in files:
@@ -333,9 +368,9 @@ def api_upload_staff():
             # FORCE update based on the EXACT original name stored in DB
             cur.execute("""
                 UPDATE staff_profiles 
-                SET name = %s, email = %s, phone = %s, address = %s, communication = %s, folder_path = %s 
+                SET name = %s, email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s 
                 WHERE name = %s
-            """, (staff_name, email, phone, address, communication, staff_dir, original_name))
+            """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir, original_name))
             
             # If no rows were updated (maybe name was already changed/sanitized), 
             # try finding by sanitized original name
@@ -352,14 +387,14 @@ def api_upload_staff():
             if row:
                 cur.execute("""
                     UPDATE staff_profiles 
-                    SET email = %s, phone = %s, address = %s, communication = %s, folder_path = %s 
+                    SET email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s 
                     WHERE id = %s
-                """, (email, phone, address, communication, staff_dir, row["id"]))
+                """, (email, phone, staff_id_val, address, communication, staff_dir, row["id"]))
             else:
                 cur.execute("""
-                    INSERT INTO staff_profiles (name, email, phone, address, communication, folder_path)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (staff_name, email, phone, address, communication, staff_dir))
+                    INSERT INTO staff_profiles (name, email, phone, staff_id, address, communication, folder_path)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir))
         conn.commit()
     except Exception as e:
         log.error("DB error saving staff profile: %s", e)
@@ -396,6 +431,7 @@ def api_staff_profiles():
             profiles.append({
                 "id":          row["id"],
                 "name":        staff_name,
+                "staff_id":    row["staff_id"] or "",
                 "email":       row["email"],
                 "phone":       row["phone"],
                 "address":     row["address"],
@@ -445,7 +481,7 @@ def api_staff_profile(staff_name: str):
         # Even if directory is missing (0 photos), we should still check the DB
         pass
 
-    staff_data = {"name": staff_name, "email": "", "phone": "", "address": "", "communication": ""}
+    staff_data = {"name": staff_name, "staff_id": "", "email": "", "phone": "", "address": "", "communication": ""}
     conn = None
     try:
         conn = get_db_connection()
@@ -466,7 +502,7 @@ def api_staff_profile(staff_name: str):
                 row = cur.fetchone()
         else:
             cur.execute(
-                "SELECT name, email, phone, address, communication FROM staff_profiles WHERE name = %s",
+                "SELECT name, staff_id, email, phone, address, communication FROM staff_profiles WHERE name = %s",
                 (staff_name,),
             )
             row = cur.fetchone()
@@ -474,6 +510,7 @@ def api_staff_profile(staff_name: str):
         if row:
             resolved_name = row["name"] or staff_name
             staff_data["name"] = resolved_name
+            staff_data["staff_id"] = row["staff_id"] or ""
             staff_data["email"] = row["email"] or ""
             staff_data["phone"] = row["phone"] or ""
             staff_data["address"] = row["address"] or ""
@@ -828,6 +865,9 @@ def api_attendance_records():
     q = (request.args.get("q") or "").strip()
     date_from = (request.args.get("date_from") or "").strip()
     date_to = (request.args.get("date_to") or "").strip()
+    period = (request.args.get("period") or "all").strip().lower()
+    if period not in {"all", "today"}:
+        period = "all"
     try:
         page = int(request.args.get("page", 1))
     except Exception:
@@ -843,15 +883,16 @@ def api_attendance_records():
     where = []
     params = []
 
-    if status in {"IN", "OUT"}:
-        where.append("m.event_type = %s")
-        params.append(status)
-    if date_from:
-        where.append("m.timestamp::date >= %s::date")
-        params.append(date_from)
-    if date_to:
-        where.append("m.timestamp::date <= %s::date")
-        params.append(date_to)
+    # Status filtering removed as it's no longer used in the new schema
+    if period == "today":
+        where.append("a.attendance_date = CURRENT_DATE")
+    else:
+        if date_from:
+            where.append("a.attendance_date >= %s")
+            params.append(date_from)
+        if date_to:
+            where.append("a.attendance_date <= %s")
+            params.append(date_to)
     if q:
         like = f"%{q}%"
         where.append(
@@ -896,7 +937,7 @@ def api_attendance_records():
             FROM movement_log m
             LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
-            ORDER BY m.timestamp DESC
+            ORDER BY m.attendance_date DESC, a.first_entry_time DESC
             LIMIT %s OFFSET %s
             """,
             tuple(params + [page_size, offset]),
@@ -915,18 +956,31 @@ def api_attendance_records():
             LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
             """,
-            tuple(params),
+            tuple(params[:len(where)] + [datetime.now().date()]),
         )
         summary = cur.fetchone() or {}
+
+        formatted_records = []
+        for r in rows:
+            formatted_records.append({
+                "id": r["id"],
+                "staff_id": r["staff_id"],
+                "name": r["name"],
+                "email": r["email"],
+                "phone": r["phone"],
+                "in_time": r["in_time"],
+                "out_time": r["out_time"],
+                "timestamp": r["timestamp"].strftime("%Y-%m-%d") if hasattr(r["timestamp"], "strftime") else str(r["timestamp"]),
+                "display_id": r["display_id"]
+            })
 
         return jsonify(
             {
                 "success": True,
-                "records": rows,
+                "records": formatted_records,
                 "summary": {
                     "total_records": summary.get("total_records", 0) or 0,
-                    "total_in": summary.get("total_in", 0) or 0,
-                    "total_out": summary.get("total_out", 0) or 0,
+                    "total_staff": summary.get("total_staff_present", 0) or 0,
                     "today_total": summary.get("today_total", 0) or 0,
                 },
                 "pagination": {
@@ -935,6 +989,7 @@ def api_attendance_records():
                     "total_records": total_records,
                     "total_pages": (total_records + page_size - 1) // page_size if total_records else 0,
                 },
+                "period": period,
             }
         )
     except Exception as e:
@@ -1027,18 +1082,24 @@ def api_attendance_export():
     q = (request.args.get("q") or "").strip()
     date_from = (request.args.get("date_from") or "").strip()
     date_to = (request.args.get("date_to") or "").strip()
+    period = (request.args.get("period") or "all").strip().lower()
+    if period not in {"all", "today"}:
+        period = "all"
 
     where = []
     params = []
     if status in {"IN", "OUT"}:
         where.append("m.event_type = %s")
         params.append(status)
-    if date_from:
-        where.append("m.timestamp::date >= %s::date")
-        params.append(date_from)
-    if date_to:
-        where.append("m.timestamp::date <= %s::date")
-        params.append(date_to)
+    if period == "today":
+        where.append("a.attendance_date = CURRENT_DATE")
+    else:
+        if date_from:
+            where.append("m.attendance_date >= %s")
+            params.append(date_from)
+        if date_to:
+            where.append("m.attendance_date <= %s")
+            params.append(date_to)
     if q:
         like = f"%{q}%"
         where.append("(COALESCE(s.name,'') ILIKE %s OR COALESCE(s.email,'') ILIKE %s OR COALESCE(s.phone,'') ILIKE %s)")
@@ -1063,7 +1124,7 @@ def api_attendance_export():
             FROM movement_log m
             LEFT JOIN staff_profiles s ON s.id = m.staff_id
             {where_sql}
-            ORDER BY m.timestamp DESC
+            ORDER BY m.attendance_date DESC, a.first_entry_time DESC
             """,
             tuple(params),
         )
@@ -1078,9 +1139,9 @@ def api_attendance_export():
 
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow(["name", "email", "phone", "status", "in_time", "out_time", "timestamp"])
+            writer.writerow(["Member Name", "Email", "Phone", "First Entry", "Last Exit", "Date"])
             for r in rows:
-                writer.writerow([r["name"], r["email"], r["phone"], r["status"], r["in_time"], r["out_time"], r["timestamp"]])
+                writer.writerow([r["name"], r["email"], r["phone"], r["first_entry_time"], r["last_exit_time"], r["attendance_date"]])
             return Response(
                 output.getvalue(),
                 mimetype="text/csv",
@@ -1093,7 +1154,7 @@ def api_attendance_export():
 
         df = pd.DataFrame(rows)
         if not df.empty:
-            df.columns = ["Name", "Email", "Phone", "Status", "IN Time", "OUT Time", "Recorded At"]
+            df.columns = ["Name", "Email", "Phone", "First Entry", "Last Exit", "Date"]
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Attendance")
