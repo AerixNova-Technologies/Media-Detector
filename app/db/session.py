@@ -124,7 +124,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             cur.execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'")
-        except Exception: pass
+        except Exception: 
+            conn.rollback()
+            cur = conn.cursor()
 
         # Seed Default Roles
         cur.execute("SELECT COUNT(*) FROM roles")
@@ -237,7 +239,9 @@ def init_db() -> None:
             cur.execute("ALTER INDEX IF EXISTS idx_member_time_stamp_staff RENAME TO idx_member_timestamp_staff")
             cur.execute("ALTER INDEX IF EXISTS idx_member_time_stamp_entry RENAME TO idx_member_timestamp_entry")
             print(">>> RENAMED: member_time_stamp to member_timestamp")
-        except Exception: pass
+        except Exception:
+            conn.rollback()
+            cur = conn.cursor()
 
         # Member Timestamp Table (Primary Detection & Forensic Log)
         cur.execute("""
@@ -263,7 +267,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE member_timestamp ADD COLUMN IF NOT EXISTS person_type VARCHAR(20)")
             cur.execute("ALTER TABLE member_timestamp ADD COLUMN IF NOT EXISTS staff_id INTEGER REFERENCES staff_profiles(id)")
             cur.execute("ALTER TABLE member_timestamp ADD COLUMN IF NOT EXISTS confidence_score FLOAT")
-        except Exception: pass
+        except Exception:
+            conn.rollback()
+            cur = conn.cursor()
 
         # Attendance Table (Restore Legacy & New)
         cur.execute("""
@@ -297,7 +303,8 @@ def init_db() -> None:
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS total_duration_minutes INTEGER DEFAULT 0")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         except Exception:
-            pass
+            conn.rollback()
+            cur = conn.cursor()
 
         # Helpful lookup index for attendance notifications
         cur.execute("CREATE INDEX IF NOT EXISTS idx_telegram_users_phone_number ON telegram_users(phone_number)")
@@ -323,13 +330,14 @@ def init_db() -> None:
                 JOIN staff_pool sp
                   ON sp.rn = ((s.n - 1) % sp.total_staff) + 1
             )
-            INSERT INTO attendance (staff_id, status, in_time, out_time, timestamp)
+            INSERT INTO attendance (staff_id, attendance_date, status, in_time, out_time, timestamp)
             SELECT
                 p.staff_id,
+                (CURRENT_DATE - ((11 - p.n) * INTERVAL '1 day'))::DATE,
                 'OUT',
-                CURRENT_TIMESTAMP - ((11 - p.n) * INTERVAL '9 hours'),
-                CURRENT_TIMESTAMP - ((11 - p.n) * INTERVAL '9 hours') + INTERVAL '8 hours 15 minutes',
-                CURRENT_TIMESTAMP - ((11 - p.n) * INTERVAL '9 hours')
+                CURRENT_TIMESTAMP - ((11 - p.n) * INTERVAL '24 hours'),
+                CURRENT_TIMESTAMP - ((11 - p.n) * INTERVAL '24 hours') + INTERVAL '8 hours 15 minutes',
+                CURRENT_TIMESTAMP - ((11 - p.n) * INTERVAL '24 hours')
             FROM picked_staff p
             WHERE EXISTS (SELECT 1 FROM staff_profiles)
               AND NOT EXISTS (SELECT 1 FROM attendance)
@@ -373,7 +381,9 @@ def init_db() -> None:
             # Add unique constraint if not exists
             try:
                 cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_staff_attendance ON attendance(staff_id, attendance_date)")
-            except Exception: pass
+            except Exception:
+                conn.rollback()
+                cur = conn.cursor()
         except Exception as e:
             log.warning(f"Schema update minor error: {e}")
 
