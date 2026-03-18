@@ -11,6 +11,7 @@ from app.services.telegram_utils import (
     is_valid_phone_number,
     normalize_phone_number,
 )
+from app.core.extensions import sse_manager
 
 log = logging.getLogger("attendance_service")
 
@@ -32,6 +33,16 @@ def log_movement(camera_id: str, image_path: str, detected_at: datetime | None =
         conn.commit()
         ret_id = row["id"] if row else None
         log.debug(f"log_movement saved to DB as ID: {ret_id}")
+        
+        # SSE UPDATE
+        if ret_id:
+            sse_manager.announce({
+                "id": ret_id,
+                "camera_id": camera_id,
+                "image_path": image_path,
+                "detected_at": detected_at.isoformat()
+            }, event_type="movement_update")
+            
         return ret_id
     except Exception as e:
         log.error(f"Failed to log movement: {e}")
@@ -92,6 +103,20 @@ def log_person(
         row = cur.fetchone()
         conn.commit()
         res_id = row["id"] if row else None
+        
+        # SSE UPDATE
+        if res_id:
+            sse_manager.announce({
+                "id": res_id,
+                "camera_id": camera_id,
+                "person_type": person_type,
+                "staff_id": staff_id,
+                "staff_name": staff_name,
+                "image_path": image_path,
+                "confidence": confidence,
+                "detected_at": detected_at.isoformat()
+            }, event_type="member_log_update")
+
         return res_id
     except Exception as e:
         log.error(f"Failed to log person detection: {e}")
@@ -230,6 +255,16 @@ def track_staff_attendance(
                     """, (detected_at, staff_id, today))
 
         conn.commit()
+        
+        # SSE UPDATE
+        sse_manager.announce({
+            "staff_id": staff_id,
+            "staff_name": staff_name,
+            "attendance_date": str(today),
+            "is_first_entry": result["is_first_entry"],
+            "detected_at": detected_at.isoformat()
+        }, event_type="attendance_update")
+
         return result
     except Exception as e:
         log.error(f"Failed to track staff attendance: {e}")

@@ -101,12 +101,14 @@ class PersonDetector:
                 # 1. Kill "Giant Ghost Boxes" (Likely background wall/floor errors)
                 bw, bh = (x2 - x1), (y2 - y1)
                 fw, fh = frame.shape[1], frame.shape[0]
-                if bw > (fw * 0.98) or bh > (fh * 0.98):
-                    log.debug("YOLO: Filtered giant box: %dx%d", int(bw), int(bh))
+                # Relaxed from 0.98 to 1.0 to allow subjects that fill the frame (e.g. very close to lens)
+                if bw > (fw * 1.0) or bh > (fh * 1.0):
+                    log.info("YOLO: Filtered giant box: %dx%d (Frame: %dx%d)", int(bw), int(bh), fw, fh)
                     continue
 
                 # 2. Filter out tiny artifacts (Noise)
-                if bh < (fh * 0.05):
+                # Relaxed from 0.05 to 0.02 to allow subjects very far away
+                if bh < (fh * 0.02):
                     log.debug("YOLO: Filtered tiny box: %dx%d", int(bw), int(bh))
                     continue
 

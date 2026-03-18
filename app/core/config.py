@@ -22,8 +22,8 @@ CAMERAS: list[dict] = [
         "url":  os.environ.get("IMOU_CAM2_URL", "rtsp://admin:L28DED5C@192.168.1.240:554/cam/realmonitor?channel=1&subtype=0"),
     },
 ]
-FRAME_WIDTH:  int   = 1280
-FRAME_HEIGHT: int   = 720
+FRAME_WIDTH:  int   = 640
+FRAME_HEIGHT: int   = 480
 TARGET_FPS:   float = 30.0
 
 # Professional Surveillance Resolution (YOLO Native 640x384)
@@ -31,9 +31,9 @@ AI_FRAME_WIDTH:  int = 640
 AI_FRAME_HEIGHT: int = 384
 
 # ─── Motion Detection ──────────────────────────────────────────────────────
-MOTION_MIN_AREA:      int   = 800    # lower = catches subtle movement
+MOTION_MIN_AREA:      int   = 400    # lower = even more sensitive
 MOTION_HISTORY:       int   = 300
-MOTION_VAR_THRESHOLD: float = 12.0  # lower = more sensitive
+MOTION_VAR_THRESHOLD: float = 8.0   # lower = more sensitive
 
 # Once motion is detected, keep the AI pipeline running for this many seconds
 # even if the person sits perfectly still (MOG2 would otherwise call it "background").
@@ -41,7 +41,7 @@ MOTION_COOLDOWN_SEC: float = 30.0
 
 # ─── Person Detection (YOLOv8) ─────────────────────────────────────────────
 YOLO_MODEL:       str   = "yolov8n.pt"  # Nano Model: Exact speed of reference videos
-YOLO_CONF:        float = 0.25          # Webb-Presence Fix: Detects desk-sitting people reliably
+YOLO_CONF:        float = 0.50          # Professional precision for member logs
 YOLO_DEVICE:      str   = "cpu" 
 YOLO_SKIP_FRAMES: int   = 0             # Direct movement processing
 
@@ -52,8 +52,8 @@ import os
 DETECTION_MODE: str = os.environ.get("DETECTION_MODE", "yolo_only")  # Optimized for CPU DEMO speed
 
 # ─── Tracking (DeepSORT) ───────────────────────────────────────────────────
-DEEPSORT_MAX_AGE:  int = 80             # High-Stability: Prevents ID flipping during occlusion
-DEEPSORT_N_INIT:   int = 2              # Rapid confirmation
+DEEPSORT_MAX_AGE:  int = 120            # 4-second memory for lost people
+DEEPSORT_N_INIT:   int = 3              # Require 3 consistent frames of detection
 DEEPSORT_MAX_IOU:  float = 0.7          
 DEEPSORT_EMBEDDER: str = "mobilenet"
 

@@ -16,6 +16,8 @@ import logging
 
 log = logging.getLogger("extensions")
 
+from app.services.sse_service import sse_manager
+
 # ── AI Feature Toggles (runtime flags, mutated via /api/toggles) ─────────────
 AI_TOGGLES: dict[str, bool] = {
     "person":  True,
@@ -42,3 +44,5 @@ def _make_notifier():
 # Build singletons at import time (module-level, happens once at startup)
 cam_mgr  = _make_camera_manager()
 notifier = _make_notifier()
+
+

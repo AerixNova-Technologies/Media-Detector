@@ -431,6 +431,31 @@
     window.location.href = `/api/member-logs/export?${params.toString()}`;
   }
 
+
+  function initSSE() {
+    console.log("Initializing SSE for Member Logs...");
+    const eventSource = new EventSource('/api/sse/stream');
+
+    eventSource.onopen = () => {
+      console.log("SSE Connection opened.");
+    };
+
+    eventSource.addEventListener('member_log_update', (e) => {
+      const data = JSON.parse(e.data);
+      console.log("Member log update received:", data);
+      
+      // Only refresh if we are on page 1 or the search is empty
+      const q = document.getElementById('log-search').value.trim();
+      if (logCurrentPage === 1 && !q) {
+        loadMemberLogs();
+      }
+    });
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Connection failed, retrying...", err);
+    };
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     flatpickr("#log-date-range", {
       mode: "range",
@@ -438,6 +463,7 @@
       onClose: () => { resetAndLoadLogs(); }
     });
     loadMemberLogs();
+    initSSE();
   });
 </script>
 {% endblock %}

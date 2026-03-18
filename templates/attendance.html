@@ -1032,10 +1032,37 @@
   }
 
 
+
+  function initSSE() {
+    console.log("Initializing SSE for Attendance...");
+    const eventSource = new EventSource('/api/sse/stream');
+
+    eventSource.onopen = () => {
+      console.log("SSE Connection opened.");
+    };
+
+    eventSource.addEventListener('attendance_update', (e) => {
+      const data = JSON.parse(e.data);
+      console.log("Attendance update received:", data);
+      
+      // Only refresh if we are on page 1 or the search is empty
+      const q = document.getElementById('att-search').value.trim();
+      if (attCurrentPage === 1 && !q) {
+        loadAttendance();
+      }
+    });
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Connection failed, retrying...", err);
+      // EventSource naturally retries, but we logs it
+    };
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initDateRangePicker();
     document.addEventListener('click', closeAttActionMenus);
     loadAttendance();
+    initSSE();
   });
 </script>
 {% endblock %}

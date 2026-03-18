@@ -17,15 +17,15 @@ except Exception:
 class FaceRecognizer:
     def __init__(self, db_path: str = None, skip_frames: int = 15, backend: str = "opencv", model_name="Facenet512"):
         self.skip_frames = skip_frames
-        self.backend = backend
-        self.model_name = model_name
+        self.backend = "opencv" # Switched back to opencv for speed, but with enforce_detection=True
+        self.model_name = "Facenet512"
         self.db_path = db_path
         self._cache: dict[int, dict] = {} # Changed to store dict results
         self._counters: dict[int, int] = {}
         self._available = _DEEPFACE_OK
         self._known_faces: list[dict] = [] # List of {"id": int, "name": str, "encoding": list[float]}
         
-        # Stricter threshold to prevent false positives (0.4 is the max, 0.25-0.3 is safer)
+        # Adjusted to 0.35 to tolerate lower quality photos (like Rahul's side-view)
         self.threshold = 0.35 
         # Minimum size of face crop to attempt recognition
         self.min_face_size = 20 
@@ -34,9 +34,8 @@ class FaceRecognizer:
             self.load_from_folder(db_path)
 
     def load_from_folder(self, db_path: str):
-        """Scan subfolders of db_path and load face signatures."""
-        if not db_path:
-            return
+        """Scan subfolders and load averaged face signatures per person."""
+        if not db_path: return
         self.db_path = db_path
             
         from app.db.session import get_db_connection
@@ -46,40 +45,42 @@ class FaceRecognizer:
             cur = conn.cursor()
             
             log.info("FaceRec: Scanning %s for staff faces...", db_path)
-            self._known_faces = [] # Clear existing list to avoid duplicates on reload
+            self._known_faces = []
+            
             for person_name in os.listdir(db_path):
-                if person_name.lower() in ["branding", "snapshots"]:
+                if person_name.lower() in ["branding", "snapshots", "movement"]:
                     continue
                 person_dir = os.path.join(db_path, person_name)
                 if not os.path.isdir(person_dir):
                     continue
                 
-                # Fetch staff_id and db_id for this person
                 cur.execute("SELECT id, staff_id FROM staff_profiles WHERE name = %s", (person_name,))
                 row = cur.fetchone()
                 db_id = row['id'] if row else None
                 display_id = row['staff_id'] if row else ""
 
-                # Load all valid images from the directory
-                loaded_count = 0
+                person_embs = []
                 for filename in os.listdir(person_dir):
                     if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
                         img_path = os.path.join(person_dir, filename)
                         try:
                             emb = self.extract_embedding(cv2.imread(img_path))
                             if emb:
-                                self._known_faces.append({
-                                    "id": db_id,
-                                    "name": person_name, 
-                                    "display_id": display_id, 
-                                    "encoding": emb
-                                })
-                                loaded_count += 1
-                        except Exception as e:
-                            log.warning("FaceRec: Failed to load %s: %s", img_path, e)
+                                person_embs.append(emb)
+                        except Exception:
+                            continue
                 
-                if loaded_count > 0:
-                    log.info("FaceRec: Loaded staff member: %s (ID: %s, %d photos)", person_name, display_id, loaded_count)
+                if person_embs:
+                    # Robust Accuracy: Average all images for this person into one signature
+                    avg_emb = np.mean(person_embs, axis=0).tolist()
+                    self._known_faces.append({
+                        "id": db_id,
+                        "name": person_name, 
+                        "display_id": display_id, 
+                        "encoding": avg_emb
+                    })
+                    log.info("FaceRec: Loaded staff member: %s (Averaged from %d photos)", person_name, len(person_embs))
+                    
         except Exception as e:
             log.error("FaceRec: Error loading from folder: %s", e)
         finally:
@@ -112,7 +113,7 @@ class FaceRecognizer:
                 img_path=img,
                 model_name=self.model_name,
                 detector_backend=self.backend,
-                enforce_detection=False,
+                enforce_detection=True, # STRICT: No face = No recognition
                 align=True
             )
             if result and len(result) > 0:
@@ -142,8 +143,8 @@ class FaceRecognizer:
 
         # Extract current embedding
         current_enc = self.extract_embedding(face_crop)
-        if not current_enc:
-            self._cache[track_id] = default_res
+        if current_enc is None:
+            # If no actual face detected, return Unknown immediately
             return default_res
 
         # Find best match in memory
@@ -159,7 +160,7 @@ class FaceRecognizer:
                 best_id = identity.get("id")
                 best_name = identity["name"]
                 best_display_id = identity.get("display_id", "")
-
+        
         res = {"id": best_id, "name": best_name, "display_id": best_display_id}
         self._cache[track_id] = res
         return res

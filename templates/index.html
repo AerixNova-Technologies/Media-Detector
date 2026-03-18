@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -1225,8 +1225,41 @@
           badge.innerHTML = `<div class="pulse ${on ? '' : 'off'}"></div> ${on ? 'Live' : 'Idle'}`;
         }
 
-        // â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        function initSSE() {
+          console.log("Initializing SSE for Dashboard...");
+          const eventSource = new EventSource('/api/sse/stream');
+
+          eventSource.addEventListener('movement_update', () => {
+             // If dashboard is active, refresh metrics
+             const dashView = document.getElementById('view-dashboard');
+             if (dashView && dashView.classList.contains('active')) {
+               loadDashboard();
+             }
+          });
+
+          eventSource.addEventListener('member_log_update', (e) => {
+             const data = JSON.parse(e.data);
+             console.log("Live Detection:", data.staff_name || "Unknown Person");
+             const dashView = document.getElementById('view-dashboard');
+             if (dashView && dashView.classList.contains('active')) {
+               loadDashboard();
+             }
+          });
+
+          eventSource.addEventListener('attendance_update', () => {
+             const dashView = document.getElementById('view-dashboard');
+             if (dashView && dashView.classList.contains('active')) {
+               loadDashboard();
+             }
+          });
+
+          eventSource.onerror = () => {
+            console.log("SSE trying to reconnect...");
+          };
+        }
+
         loadCameras();
+        initSSE();
       </script>
 </body>
 

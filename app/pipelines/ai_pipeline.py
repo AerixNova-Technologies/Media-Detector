@@ -281,13 +281,21 @@ class AIPipeline(threading.Thread):
             motion, mask = self.motion_det.detect(ai_frame)
             now = time.monotonic()
             movement_id = None
-            movement_label = "unknown"
-            movement_conf = 0.0
+            movement_label, movement_conf = "unknown", 0.0
             force_person_scan = False
             
-            # Cooldown logic for MOG2-based motion log entries
-            if motion and (now - self._last_motion_time) > 2.0:
-                primitive_log("MOG2 Motion triggered.")
+            # Hybrid Trigger: MOG2 Motion OR YOLO-confirmed person (via classify_motion)
+            # This ensures that even if MOG2 doesn't see "movement" (e.g. slow moving person), 
+            # if YOLO sees a human, we still capture a snapshot.
+            yolo_human = False
+            if not motion or (now - self._last_motion_time) > 2.0:
+                movement_label, movement_conf = self.person_det.classify_motion(ai_frame)
+                yolo_human = (movement_label == "human")
+
+            trigger_snapshot = (motion or yolo_human) and (now - self._last_motion_time) > 2.0
+
+            if trigger_snapshot:
+                log.info(f"Movement Triggered: MOG2={motion}, YOLO_Human={yolo_human}")
                 motion_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 motion_filename = f"motion_{self.camera_name.replace(' ', '_')}_{motion_ts}.jpg"
                 motion_dir = os.path.join("static", "uploads", "movement")
@@ -295,14 +303,13 @@ class AIPipeline(threading.Thread):
                 motion_path = os.path.join(motion_dir, motion_filename)
                 
                 cv2.imwrite(motion_path, ai_frame)
-                primitive_log(f"Saved motion image: {motion_path}")
+                log.info(f"Saved movement snapshot: {motion_path}")
                 
                 self._current_frame_motion_img = f"static/uploads/movement/{motion_filename}"
                 self._last_motion_img = self._current_frame_motion_img
                 
                 movement_id = log_movement(self.camera_name, self._current_frame_motion_img)
-                movement_label, movement_conf = self.person_det.classify_motion(ai_frame)
-                force_person_scan = movement_label == "human"
+                force_person_scan = yolo_human
                 if movement_id:
                     update_movement_classification(movement_id, movement_label, movement_conf)
                 self._last_motion_time = now
@@ -385,15 +392,15 @@ class AIPipeline(threading.Thread):
                     staff_id = rec.get("id")
                     
                     # FINAL HUMAN VERIFICATION
-                    # If staff, it's definitely a human. If not staff, we MUST verify it's a "human" and not a false positive (shadow/light).
+                    # Always verify it's a "human" and not a false positive (shadow/light/ghost).
+                    v_label, v_conf = self.person_det.classify_motion(person_crop)
+                    if v_label != "human":
+                        log.debug(f"DEBUG: Skipping promotion for TID {tid} - classify result: {v_label} ({v_conf:.2f})")
+                        continue
+
                     if staff_id and identity != "Unknown":
                         person_type = "staff"
                     else:
-                        # Double-check classification for unknown detections
-                        v_label, v_conf = self.person_det.classify_motion(person_crop)
-                        if v_label != "human":
-                            log.debug(f"DEBUG: Skipping promotion for TID {tid} - classify result: {v_label} ({v_conf:.2f})")
-                            continue
                         person_type = "unknown"
 
                     confidence = self._calculate_clarity(ai_frame, bbox)

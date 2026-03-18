@@ -38,6 +38,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.FileHandler("app_debug.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 log = logging.getLogger("run")
 
