@@ -608,9 +608,49 @@ class AIPipeline(threading.Thread):
                     bx1, by1, bx2, by2 = bbox
                     bw, bh = max(1, bx2 - bx1), max(1, by2 - by1)
                     ratio = bw / bh
-                    if ratio > 1.4:    action = "😴 sleeping"
-                    elif ratio > 0.85: action = "🪑 sitting"
-                    else:              action = "🧍 standing"
+                    if ratio > 1.4:    geometry_label = "😴 sleeping"
+                    elif ratio > 0.85: geometry_label = "🪑 sitting"
+                    else:              geometry_label = "🧍 standing"
+
+                    person_crop    = ai_frame[by1:by2, bx1:bx2]
+                    slowfast_label = self.action_det.update(tid, person_crop) if person_crop.size > 0 else ""
+
+                    def _overlaps(ob, pb, exp=40):
+                        ox1, oy1, ox2, oy2 = ob
+                        px1, py1, px2, py2 = pb
+                        return ox1 < px2 + exp and ox2 > px1 - exp and oy1 < py2 + exp and oy2 > py1 - exp
+
+                    psb        = [bx1 * sx, by1 * sy, bx2 * sx, by2 * sy]
+                    near_food  = any(_overlaps(f, psb) for f in self._last_objects.get("food", []))
+                    near_phone = any(_overlaps(p, psb) for p in self._last_objects.get("phone", []))
+
+                    TAGS = ("⚠", "🏃", "💪", "📖", "✍", "🍽", "💬", "💃", "🎵")
+                    if near_food:    action = "🍽 eating"
+                    elif near_phone: action = "💻 working"
+                    elif slowfast_label and any(t in slowfast_label for t in TAGS): action = slowfast_label
+                    else:            action = geometry_label
+
+                if AI_TOGGLES.get("emotion", True):
+                    person_crop = ai_frame[by1:by2, bx1:bx2]
+                    if person_crop.size > 0: self._submit_emotion(person_crop, tid)
+                    emotion = self.emotion_det._cache.get(tid, "")
+
+                if AI_TOGGLES.get("person", True):
+                    cached_res = self.face_rec._cache.get(tid, {"name": "Unknown", "display_id": ""})
+                    identity = cached_res["name"]
+                    display_id = cached_res["display_id"]
+                    
+                    try:
+                        is_unknown = (identity == "" or identity == "Unknown")
+                        active_rec_tasks = sum(1 for f in self._rec_futures.values() if not f.done())
+                        # Re-verify every 100 frames (approx 3-5 seconds) even if already recognized
+                        # This prevents "sticky" false positives from persisting if the tracker swaps.
+                        if (is_unknown or (self._frame_idx % 100 == 0)) and active_rec_tasks < 2:
+                            self._submit_rec(ai_frame, bbox, tid)
+                        
+                        self.notifier.notify_person(tid, self.camera_name, action)
+                    except Exception as e:
+                        log.error("Notification error: %s", e)
 
                 track_results.append(TrackResult(
                     track_id=tid,

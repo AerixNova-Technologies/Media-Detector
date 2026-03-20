@@ -263,28 +263,27 @@ def get_member_logs():
                 params.append(date_to)
                 
         if q:
-            where_clauses.append("(s.name ILIKE %s OR s.staff_id ILIKE %s)")
-            params.append(f"%{q}%")
-            params.append(f"%{q}%")
+            # Handle NULL staff_name by checking both m.staff_name and s.name
+            where_clauses.append("(COALESCE(s.name, '') ILIKE %s OR COALESCE(s.staff_id, '') ILIKE %s OR COALESCE(m.staff_name, '') ILIKE %s)")
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
             
         where_sql = ""
         if where_clauses:
             where_sql = "WHERE " + " AND ".join(where_clauses)
             
-        # Get total and counts for pagination & summary
-        cur.execute(f"""
-            SELECT 
-                COUNT(*) as total,
-                COUNT(*) FILTER (WHERE m.person_type = 'staff') as staff_count,
-                COUNT(*) FILTER (WHERE m.person_type != 'staff' OR m.person_type IS NULL) as unknown_count
-            FROM member_timestamp m 
-            LEFT JOIN staff_profiles s ON m.staff_id = s.id 
-            {where_sql}
-        """, tuple(params))
-        counts_row = cur.fetchone()
-        total = counts_row['total'] if counts_row else 0
-        staff_count = counts_row['staff_count'] if counts_row else 0
-        unknown_count = counts_row['unknown_count'] if counts_row else 0
+        # Get counts for summary cards
+        cur.execute(f"SELECT COUNT(*) as count FROM member_timestamp m LEFT JOIN staff_profiles s ON m.staff_id = s.id {where_sql}", tuple(params))
+        total = cur.fetchone()['count']
+        
+        # Get specific counts (respecting other filters EXCEPT type)
+        base_where = " AND ".join([c for c in where_clauses if "person_type" not in c])
+        base_sql = f"WHERE {base_where}" if base_where else ""
+        base_params = [p for i, p in enumerate(params) if "person_type" not in where_clauses[i//3 if q and i < len(params)-2 else 0]] 
+        # Actually easier to just re-run simple counts for summary
+        cur.execute("SELECT COUNT(*) FROM member_timestamp WHERE person_type ILIKE 'staff' AND (detected_at::date = CURRENT_DATE OR %s = 'all')", (period,))
+        staff_count = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM member_timestamp WHERE person_type ILIKE 'unknown' AND (detected_at::date = CURRENT_DATE OR %s = 'all')", (period,))
+        unknown_count = cur.fetchone()['count']
         
         # Get data
         cur.execute(f"""
@@ -342,6 +341,8 @@ def get_member_logs():
             "period": period,
             "pagination": {
                 "total": total,
+                "staff_count": staff_count,
+                "unknown_count": unknown_count,
                 "page": page,
                 "limit": limit,
                 "pages": (int(total) + limit - 1) // limit if limit > 0 else 0
@@ -428,71 +429,45 @@ def export_member_logs():
     finally:
         conn.close()
 
-@attendance_bp.route("/general-movement", methods=['GET'])
+@attendance_bp.route('/telegram-alerts', methods=['GET'])
 @login_required
-def get_general_movement():
-    """Get general movement logs with pagination, filtering, and counts."""
-    person_type = request.args.get('type')  # staff, unknown
+def get_telegram_alerts():
+    """Get telegram notifications with pagination and filtering."""
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', request.args.get('page_size', 20)))
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
-    period = request.args.get('period', 'all')  # all, today
     offset = (page - 1) * limit
     q = request.args.get('q')
 
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        
         where_clauses = []
-        params: list[Any] = []
+        params = []
         
-        if person_type:
-            where_clauses.append("m.person_type = %s")
-            params.append(person_type)
-        
-        if period == 'today':
-            where_clauses.append("m.detected_at::date = %s")
-            params.append(datetime.now().date())
-        else:
-            if date_from:
-                where_clauses.append("m.detected_at >= %s")
-                params.append(date_from)
-            if date_to:
-                where_clauses.append("m.detected_at <= %s")
-                params.append(date_to)
-                
+        if date_from:
+            where_clauses.append("timestamp >= %s")
+            params.append(date_from)
+        if date_to:
+            where_clauses.append("timestamp <= %s")
+            params.append(date_to)
         if q:
-            where_clauses.append("(s.name ILIKE %s OR s.staff_id ILIKE %s)")
-            params.append(f"%{q}%")
-            params.append(f"%{q}%")
+            where_clauses.append("(message_text ILIKE %s OR camera_name ILIKE %s OR action ILIKE %s)")
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
             
         where_sql = ""
         if where_clauses:
             where_sql = "WHERE " + " AND ".join(where_clauses)
             
-        # Get total count
-        cur.execute(f"SELECT COUNT(*) as count FROM member_timestamp m LEFT JOIN staff_profiles s ON m.staff_id = s.id {where_sql}", tuple(params))
-        total_row = cur.fetchone()
-        total = total_row['count'] if total_row else 0
+        cur.execute(f"SELECT COUNT(*) as count FROM telegram_alerts {where_sql}", tuple(params))
+        total = cur.fetchone()['count']
         
-        # Get staff and unknown counts for summary
-        cur.execute(f"SELECT COUNT(*) FILTER (WHERE person_type = 'staff') as staff_count, COUNT(*) FILTER (WHERE person_type = 'unknown') as unknown_count FROM member_timestamp m LEFT JOIN staff_profiles s ON m.staff_id = s.id {where_sql}", tuple(params))
-        counts_res = cur.fetchone()
-        staff_count = counts_res['staff_count'] or 0
-        unknown_count = counts_res['unknown_count'] or 0
-        
-        # Get data
         cur.execute(f"""
-            SELECT 
-                m.id, m.camera_id, m.entry_image, m.image_path, m.exit_image, m.merged_image,
-                m.person_type, m.staff_id, s.name AS member_name, m.entry_time, m.detected_at, m.exit_time,
-                s.staff_id as display_id
-            FROM member_timestamp m
-            LEFT JOIN staff_profiles s ON m.staff_id = s.id
+            SELECT id, track_id, camera_name, action, message_text, status, timestamp, chat_id
+            FROM telegram_alerts
             {where_sql}
-            ORDER BY m.detected_at DESC
+            ORDER BY timestamp DESC
             LIMIT %s OFFSET %s
         """, tuple(params + [limit, offset]))
         
@@ -501,108 +476,27 @@ def get_general_movement():
         for r in rows:
             results.append({
                 "id": r['id'],
-                "person_type": (r['person_type'] or "unknown").upper(),
-                "member_id": r['staff_id'],
-                "member_name": r['member_name'] or "-",
-                "display_id": r['display_id'] or "-",
-                "camera_id": r['camera_id'],
-                "entry_image": _member_log_image_url(r['entry_image'] or r['image_path']),
-                "exit_image": _member_log_image_url(r['exit_image']),
-                "merged_image": _member_log_image_url(r['merged_image']),
-                "entry_time": (r['entry_time'] or r['detected_at']).strftime("%Y-%m-%d %H:%M:%S") if r['entry_time'] or r['detected_at'] else "-",
-                "exit_time": r['exit_time'].strftime("%Y-%m-%d %H:%M:%S") if r['exit_time'] else "-"
+                "track_id": r['track_id'],
+                "camera_name": r['camera_name'] or "-",
+                "action": r['action'] or "-",
+                "message_text": r['message_text'],
+                "status": r['status'],
+                "chat_id": r['chat_id'] or "-",
+                "timestamp": r['timestamp'].strftime("%Y-%m-%d %H:%M:%S") if r['timestamp'] else "-"
             })
             
         return jsonify({
             "status": "success",
             "data": results,
-            "counts": {"staff": staff_count, "unknown": unknown_count},
             "pagination": {
                 "total": total,
                 "page": page,
                 "limit": limit,
-                "pages": (int(total) + limit - 1) // limit if limit > 0 else 0
+                "pages": (total + limit - 1) // limit if limit > 0 else 0
             }
         })
     except Exception as e:
-        log.error(f"Error fetching general movement logs: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        conn.close()
-
-@attendance_bp.route("/general-movement/export", methods=['GET'])
-@login_required
-def export_general_movement():
-    """Export general movement logs as CSV."""
-    person_type = request.args.get("type")
-    date_from = request.args.get("date_from")
-    date_to = request.args.get("date_to")
-    q = request.args.get('q')
-    period = request.args.get('period', 'all')
-    
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        where_clauses = []
-        params: list[Any] = []
-        
-        if person_type:
-            where_clauses.append("m.person_type = %s")
-            params.append(person_type)
-        if period == 'today':
-            where_clauses.append("m.detected_at::date = %s")
-            params.append(datetime.now().date())
-        else:
-            if date_from:
-                where_clauses.append("m.detected_at >= %s")
-                params.append(date_from)
-            if date_to:
-                where_clauses.append("m.detected_at <= %s")
-                params.append(date_to)
-        if q:
-            where_clauses.append("(s.name ILIKE %s OR s.staff_id ILIKE %s)")
-            params.append(f"%{q}%")
-            params.append(f"%{q}%")
-            
-        where_sql = ""
-        if where_clauses:
-            where_sql = "WHERE " + " AND ".join(where_clauses)
-            
-        cur.execute(f"""
-            SELECT 
-                m.detected_at, m.person_type, s.staff_id as display_id, s.name AS staff_name,
-                m.camera_id, m.confidence_score, m.entry_time, m.exit_time
-            FROM member_timestamp m
-            LEFT JOIN staff_profiles s ON m.staff_id = s.id
-            {where_sql}
-            ORDER BY m.detected_at DESC
-        """, tuple(params))
-        
-        rows = cur.fetchall()
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['Detection Time', 'Person Type', 'Staff ID', 'Staff Name', 'Camera', 'Confidence Score', 'Entry Time', 'Exit Time'])
-        
-        for r in rows:
-            writer.writerow([
-                r['detected_at'].strftime('%Y-%m-%d %H:%M:%S') if r['detected_at'] else '',
-                r['person_type'].capitalize() if r['person_type'] else 'Unknown',
-                r['display_id'] or '',
-                r['staff_name'] or '',
-                r['camera_id'] or '',
-                f"{r['confidence_score']:.2f}" if r['confidence_score'] else '0.00',
-                (r['entry_time'] or r['detected_at']).strftime('%Y-%m-%d %H:%M:%S') if r['entry_time'] or r['detected_at'] else '-',
-                r['exit_time'].strftime('%Y-%m-%d %H:%M:%S') if r['exit_time'] else '-'
-            ])
-            
-        output.seek(0)
-        return Response(
-            output.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-disposition": f"attachment; filename=general_movement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
-        )
-    except Exception as e:
-        log.error(f"Error exporting general movement logs: {e}")
+        log.error(f"Error fetching telegram alerts: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         conn.close()

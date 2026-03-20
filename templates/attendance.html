@@ -87,7 +87,7 @@
           </thead>
           <tbody id="attendance-table-body">
             <tr>
-              <td colspan="9" class="att-empty">Loading attendance records...</td>
+              <td colspan="11" class="att-empty">Loading attendance records...</td>
             </tr>
           </tbody>
         </table>
@@ -1043,11 +1043,25 @@
   }
 
   function showAttToast(msg, type = 'info') {
-    // Simple toast fallback until a better UI is requested
-    alert(msg);
+    const toast = document.createElement('div');
+    toast.className = `att-toast ${type}`;
+    toast.style.cssText = `
+      position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; 
+      background: ${type==='error'?'#fee2e2':'#ecfdf5'}; 
+      color: ${type==='error'?'#ef4444':'#10b981'};
+      border: 1px solid ${type==='error'?'#fecaca':'#d1fae5'};
+      border-radius: 10px; font-size: 14px; font-weight: 600; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 9999;
+      animation: slideIn 0.3s ease-out;
+    `;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.5s';
+      setTimeout(() => toast.remove(), 500);
+    }, 4000);
   }
-
-
 
   function initSSE() {
     console.log("Initializing SSE for Attendance...");
@@ -1055,22 +1069,33 @@
 
     eventSource.onopen = () => {
       console.log("SSE Connection opened.");
+      showAttToast("✅ Live Monitoring Active", "success");
     };
 
     eventSource.addEventListener('attendance_update', (e) => {
       const data = JSON.parse(e.data);
       console.log("Attendance update received:", data);
       
-      // Only refresh if we are on page 1 or the search is empty
+      // Notify only if first entry
+      if (data.is_first_entry) {
+        showAttToast(`👤 ${data.staff_name} marked present`, 'success');
+      }
+
       const q = document.getElementById('att-search').value.trim();
-      if (attCurrentPage === 1 && !q) {
-        loadAttendance();
+      if (attCurrentPage === 1 && !q) loadAttendance();
+    });
+
+    eventSource.addEventListener('member_log_update', (e) => {
+      // Even if not a staff entry, we can refresh the table if needed
+      // or at least show a "Human Detected" toast for feedback
+      const data = JSON.parse(e.data);
+      if (data.person_type === 'unknown') {
+         showAttToast("🔍 Person detected (Unknown)", "info");
       }
     });
 
     eventSource.onerror = (err) => {
       console.error("SSE Connection failed, retrying...", err);
-      // EventSource naturally retries, but we logs it
     };
   }
 

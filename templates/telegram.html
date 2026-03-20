@@ -1,13 +1,11 @@
 {% extends "base.html" %}
-{% set active_page = 'settings' %}
-{% set sub_page = 'integrations' %}
+{% set active_page = 'telegram' %}
 
 {% block content %}
 <div style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
 <div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
 
-
-  <h2 class="s-mod-title">Integrations Hub</h2>
+  <h2 class="s-mod-title">Telegram & Cloud Integrations</h2>
   <p class="s-mod-sub">Connect external services for alerts and cloud access.</p>
 
   <div style="margin-top:28px;">
@@ -52,8 +50,6 @@
 .add-btn { padding:10px 20px; background:var(--accent); color:white; border:none; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; transition: opacity 0.2s; }
 .add-btn:hover { opacity:0.9; }
 
-.s-back { display:inline-block; background:none; border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; margin-bottom: 24px; transition: all 0.2s; text-decoration:none; }
-.s-back:hover { border-color: var(--accent); color: var(--accent); }
 .s-mod-title { font-size: 22px; font-weight: 800; color: var(--text); margin:0 0 6px 0; }
 .s-mod-sub { font-size: 13px; color: var(--muted); margin:0; }
 .s-field { margin-bottom: 16px; }
@@ -86,7 +82,7 @@
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
-.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; transition: .4s; border-radius: 50%; }
 input:checked + .slider { background-color: var(--accent); }
 input:checked + .slider:before { transform: translateX(18px); }
 

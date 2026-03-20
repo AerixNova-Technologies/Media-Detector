@@ -27,34 +27,55 @@ class TelegramNotifier:
             log.error(f"Error fetching active bots: {e}")
             return []
 
-    def send_message(self, text):
+    def send_message(self, text, track_id=None, cam_name=None, action=None):
+        """Send message across all active bots and log to database."""
         active_bots = self._get_active_bots()
-        if not active_bots:
-            return False
-            
         any_success = False
-        for bot in active_bots:
-            token = bot['bot_token']
-            raw_ids = bot['chat_ids']
-            chat_ids = [i.strip() for i in raw_ids.split(",") if i.strip()]
-            
-            for cid in chat_ids:
-                url = f"https://api.telegram.org/bot{token}/sendMessage"
-                payload = {
-                    "chat_id": cid,
-                    "text": text,
-                    "parse_mode": "Markdown"
-                }
-                try:
-                    resp = requests.post(url, json=payload, timeout=5)
-                    if resp.status_code == 200:
-                        log.info(f"Telegram notification sent via bot to {cid}.")
-                        any_success = True
-                    else:
-                        log.error(f"Telegram error for {cid}: {resp.text}")
-                except Exception as e:
-                    log.error(f"Failed to send Telegram to {cid}: {e}")
+        success_cids = []
         
+        if active_bots:
+            for bot in active_bots:
+                token = bot['bot_token']
+                raw_ids = bot['chat_ids']
+                chat_ids = [i.strip() for i in raw_ids.split(",") if i.strip()]
+                
+                for cid in chat_ids:
+                    url = f"https://api.telegram.org/bot{token}/sendMessage"
+                    payload = {
+                        "chat_id": cid,
+                        "text": text,
+                        "parse_mode": "Markdown"
+                    }
+                    try:
+                        resp = requests.post(url, json=payload, timeout=5)
+                        if resp.status_code == 200:
+                            log.info(f"Telegram notification sent via bot to {cid}.")
+                            any_success = True
+                            success_cids.append(cid)
+                        else:
+                            log.error(f"Telegram error for {cid}: {resp.text}")
+                    except Exception as e:
+                        log.error(f"Failed to send Telegram to {cid}: {e}")
+        
+        # LOG TO DATABASE (Structured Data)
+        from app.db.session import get_db_connection
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            status_str = 'sent' if any_success else 'failed'
+            
+            chat_id_str = ",".join(success_cids) if success_cids else ""
+            
+            cur.execute("""
+                INSERT INTO telegram_alerts (track_id, camera_name, action, message_text, status, chat_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (track_id, cam_name, action, text, status_str, chat_id_str))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            log.error(f"Failed to log Telegram alert to DB: {e}")
+
         return any_success
 
     def notify_person(self, track_id, cam_name, action=""):
@@ -71,5 +92,5 @@ class TelegramNotifier:
         if action:
             msg += f"🏃 *Activity:* {action}\n"
         
-        if self.send_message(msg):
+        if self.send_message(msg, track_id=track_id, cam_name=cam_name, action=action):
             self.last_notify_time[track_id] = now

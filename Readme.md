@@ -1,83 +1,88 @@
-# AI CCTV Surveillance System (v2.0)
+# AI Personnel Management & Surveillance System
 
-A high-performance, real-time AI monitoring system that transforms standard CCTV feeds into intelligent surveillance. It detects people, tracks their movement, identifies complex actions (like fighting or sleeping), and analyzes emotions — all while maintaining a smooth, non-blocking video stream.
-
----
-
-## 🚀 Key Features
-
-### 1. Unified Access (Monolithic Architecture)
-The project is built as a **monolithic system** with a standard, easy-to-manage folder structure:
-- All core AI modules are grouped into the `/modules` directory.
-- Utility scripts (diagnostics, seeding, setup) are contained in the `/scripts` directory.
-- Data is stored in **PostgreSQL** (set `DATABASE_URL` in `.env`).
-
-### 2. Dual-Source Monitoring
-- **Webcam:** Instantly use your built-in or USB camera.
-- **Remote CCTV Access:** Connect directly to **Imou Cloud cameras** or office **Hik-Connect** systems via authorized API gateways.
-
-### 3. Intelligent Detection Modes
-- **`yolo_only`**: Ultra-fast YOLOv8 person detection + DeepSORT tracking.
-- **`action_only`** (Recommended): Person tracking + **Posture Logic** + **SlowFast Activity Recognition**.
-- **`full`**: Everything above + high-precision RetinaFace detection & Emotion Analysis.
+A professional-grade, real-time AI monitoring and attendance system. It utilizes YOLOv8 for person detection, DeepFace for high-precision recognition, and SlowFast for action analysis, providing a complete security and personnel tracking solution.
 
 ---
 
-## 🛠 Technology Stack
+## :rocket: Key Features
 
-| Component | Technology | Role |
-| :--- | :--- | :--- |
-| **Language** | Python 3.10+ | Core Application Logic |
-| **Object Detection** | YOLOv8 (Ultralytics) | Person & Object Proximity Analysis |
-| **Action AI** | SlowFast (PyTorchVideo) | Complex behavior analysis (Kinetics-400) |
-| **Database** | PostgreSQL | Storage for Users, Cameras, and Logs |
-| **Backend** | Flask/Waitress | Multi-threaded Web UI for remote monitoring |
+### :date: AI Attendance & Identity Discovery
+- **Automated Logging**: Automatically marks `IN` and `OUT` attendance for recognized staff.
+- **Dynamic Identity Discovery**: Logs "Unknown" detections immediately and updates them automatically once a face is recognized.
+- **Snapshot Verification**: Captures high-resolution snapshots for every entry and exit event.
+- **Timezone Accuracy**: Standardized timestamping eliminates timezone offsets in the UI.
 
----
-
-## 📦 Installation (Windows)
-
-The system uses **PostgreSQL**. Ensure `DATABASE_URL` is set in `.env` (the installer will prompt for it).
-
-1.  **Open PowerShell** in the project directory.
-2.  **Run the Installer**:
-    ```powershell
-    .\install_windows.ps1
-    ```
-    *   This script will automate virtual environment creation, pip installation, and database seeding.
-
-### Default Admin Credentials:
-*   **Email:** `admin@yourdomain.com` *(update this in `scripts/seed_admin.py` before first run)*
-*   **Password:** `AerixNova@2025` *(change immediately after first login)*
+### :satellite: Intelligent Surveillance
+- **Multi-Camera Support**: Connect via USB Webcams or Remote RTSP/API streams (Imou, Hikvision).
+- **Behavior Analysis**: Detects actions like sitting, standing, sleeping, or running.
+- **Real-time Notifications**: Sends instant match alerts and attendance logs to Telegram.
 
 ---
 
-## 🚦 How to Run
+## :tools: Quick Start
 
-1.  **Activate Environment:**
-    ```powershell
-    .\venv\Scripts\activate
-    ```
-2.  **Launch Web UI:**
-    ```powershell
-    python run.py
-    ```
-3.  **Access Dashboard:** Open your browser to `http://localhost:5000`
+### 1. Prerequisites
+- **Python 3.10+**
+- **PostgreSQL** (Installed and running)
+- **Visual Studio C++ Build Tools** (Required for some AI libraries)
+
+### 2. Installation
+```powershell
+# 1. Clone the repository
+git clone <repository-url>
+cd media
+
+# 2. Create and activate virtual environment
+python -m venv venv
+.\venv\Scripts\activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+```
+
+### 3. Configuration
+Create a `.env` file in the root directory:
+```env
+DATABASE_URL=postgresql://postgres:password@localhost:5432/mediadetect
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+UPLOAD_FOLDER=static/uploads
+```
 
 ---
 
-## 📂 Project Structure
-- `/modules`: Core AI engines (YOLO, Tracker, Action Detector, Imou Connector).
-- `/scripts`: Utility scripts like `seed_admin.py` and diagnostic tools.
-- `/templates` & `/static`: Frontend assets for the Web Monitoring Dashboard.
-- `app.py`: Main entry point for the Multi-Camera Web System.
-- `main.py`: Legacy CLI entry point for local debugging.
-- `.env`: Stores `DATABASE_URL` for PostgreSQL connection.
+## :vertical_traffic_light: Running the System
+
+1. **Initialize Database**: The system creates all required tables on the first run. Ensure PostgreSQL is accessible via the `DATABASE_URL`.
+2. **Launch Application**:
+   ```powershell
+   python run.py
+   ```
+3. **Access Dashboard**: Open `http://localhost:5000` in your browser.
+   - **Default Admin**: `admin@aerix.com` / `AerixNova@2025`
 
 ---
 
-## 📝 Configuration (`config.py`)
-Tweak the AI sensitivity by globally modifying `config.py`:
-- `DETECTION_MODE`: Switch between `"action_only"`, `"yolo_only"`, or `"full"`.
-- `MOTION_COOLDOWN_SEC`: Cooldown window before stopping AI processing.
-- `YOLO_CONF`: Trust threshold for detection (0.0 to 1.0).
+## :open_file_folder: Project Structure
+- `app/api/`: REST endpoints for dashboard, cameras, and attendance.
+- `app/pipelines/`: The core `AIPipeline` logic for real-time processing.
+- `app/services/`: AI model wrappers (Face, Action, Object Detection).
+- `app/db/`: Database session management and schema initialization.
+- `templates/`: Modern, responsive HTML5 dashboard.
+- `static/uploads/`: Storage for staff face profiles and attendance snapshots.
+
+---
+
+## :wrench: Staff & Attendance Setup
+1. Go to **Member Directory** in the Sidebar.
+2. Create a profile and upload **5-10 clear face photos**.
+3. Profiles are automatically reloaded by the AI every 2 minutes.
+4. View the **Attendance** page for a live log of all identified and unidentified entries.
+
+---
+
+## :pencil: Maintenance
+- **Logs**: Check `app_debug.log` for detailed system events.
+- **Database**: Use `scripts/check_schema.py` to verify table integrity.
+- **Performance**: Adjust `YOLO_SKIP_FRAMES` in `config.py` to optimize for lower-end hardware.
+*Developed by Aerix Global Tech*

@@ -92,14 +92,25 @@ def get_db_connection():
         raise e
 
 def init_db() -> None:
-    """Initialize mandatory PostgreSQL tables."""
+    """Initialize mandatory PostgreSQL tables with robust error handling."""
     conn = None
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
 
-        # Roles Table (RBAC)
-        cur.execute("""
+        # Helper to execute and commit a block
+        def run_block(sql, label):
+            try:
+                cur.execute(sql)
+                conn.commit()
+                # print(f">>> SUCCESS: {label}")
+            except Exception as e:
+                conn.rollback()
+                log.warning(f"Block failed [{label}]: {e}")
+                # print(f">>> FAILED: {label} - {e}")
+
+        # 1. Base Tables
+        run_block("""
             CREATE TABLE IF NOT EXISTS roles (
                 id          SERIAL PRIMARY KEY,
                 name        VARCHAR(100) UNIQUE NOT NULL,
@@ -108,10 +119,9 @@ def init_db() -> None:
                 is_system   BOOLEAN DEFAULT FALSE,
                 status      VARCHAR(50) DEFAULT 'active'
             )
-        """)
+        """, "Roles Table")
 
-        # User Table
-        cur.execute("""
+        run_block("""
             CREATE TABLE IF NOT EXISTS users (
                 email         VARCHAR(255) PRIMARY KEY,
                 name          VARCHAR(255) NOT NULL,
@@ -124,9 +134,9 @@ def init_db() -> None:
                 last_login    TIMESTAMP,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """, "Users Table")
 
-        # Ensure Role foreign key and other columns exist (for existing tables)
+        # 2. RBAC & User Updates
         try:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id INTEGER REFERENCES roles(id)")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)")
@@ -135,53 +145,53 @@ def init_db() -> None:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             cur.execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'")
-        except Exception: 
+            conn.commit()
+        except Exception:
             conn.rollback()
-            cur = conn.cursor()
 
         # Seed Default Roles
-        cur.execute("SELECT COUNT(*) FROM roles")
-        if cur.fetchone()['count'] == 0:
-            print(">>> SEEDING: Default Roles")
-            default_roles = [
-                ('Administrator', 'Full system access', '{"all": true}', True),
-                ('Manager', 'Management access', '{"cameras_view": true, "cameras_edit": true, "staff_view": true, "staff_edit": true, "general_movement_view": true, "member_logs_view": true, "attendance_view": true, "reports_view": true}', False),
-                ('User', 'Standard access', '{"cameras_view": true, "staff_view": true, "general_movement_view": true, "member_logs_view": true}', False)
-            ]
-            for r_name, r_desc, r_perms, r_sys in default_roles:
-                cur.execute(
-                    "INSERT INTO roles (name, description, permissions, is_system) VALUES (%s, %s, %s, %s) "
-                    "ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions WHERE roles.name = 'Administrator'",
-                    (r_name, r_desc, r_perms, r_sys)
-                )
+        try:
+            cur.execute("SELECT COUNT(*) FROM roles")
+            if cur.fetchone()['count'] == 0:
+                print(">>> SEEDING: Default Roles")
+                default_roles = [
+                    ('Administrator', 'Full system access', '{"all": true}', True),
+                    ('Manager', 'Management access', '{"cameras_view": true, "cameras_edit": true, "staff_view": true, "staff_edit": true}', False),
+                    ('User', 'Standard access', '{"cameras_view": true, "staff_view": true}', False)
+                ]
+                for r_name, r_desc, r_perms, r_sys in default_roles:
+                    cur.execute(
+                        "INSERT INTO roles (name, description, permissions, is_system) VALUES (%s, %s, %s, %s)",
+                        (r_name, r_desc, r_perms, r_sys)
+                    )
+                conn.commit()
+        except Exception:
+            conn.rollback()
 
-        # Assign Default Role (Administrator) to any user without a role
-        cur.execute("SELECT id FROM roles WHERE name = 'Administrator'")
-        admin_role = cur.fetchone()
-        if admin_role:
-            cur.execute("UPDATE users SET role_id = %s WHERE role_id IS NULL", (admin_role['id'],))
-
-        # System Settings Table (Branding, Appearance, etc.)
-        cur.execute("""
+        # 3. Settings & Hardware
+        run_block("""
             CREATE TABLE IF NOT EXISTS system_settings (
                 key   VARCHAR(100) PRIMARY KEY,
                 value TEXT
             )
-        """)
+        """, "System Settings")
 
-        # Seed Default Settings if table is empty or missing keys
-        default_settings = [
-            ('company_name',     'MISSION CONTROL'),
-            ('logo_url',         ''),
-            ('favicon_url',      ''),
-            ('theme_mode',       'light'),
-            ('show_breadcrumbs', 'true')
-        ]
-        for key, val in default_settings:
-            cur.execute("INSERT INTO system_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (key, val))
+        # Seed Default Settings
+        try:
+            default_settings = [
+                ('company_name',     'MISSION CONTROL'),
+                ('logo_url',         ''),
+                ('favicon_url',      ''),
+                ('theme_mode',       'light'),
+                ('show_breadcrumbs', 'true')
+            ]
+            for key, val in default_settings:
+                cur.execute("INSERT INTO system_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (key, val))
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
-        # Cameras Table
-        cur.execute("""
+        run_block("""
             CREATE TABLE IF NOT EXISTS local_cameras (
                 id           SERIAL PRIMARY KEY,
                 name         VARCHAR(255),
@@ -193,10 +203,10 @@ def init_db() -> None:
                 stream_path  VARCHAR(500),
                 owner_email  VARCHAR(255)
             )
-        """)
+        """, "Local Cameras")
 
-        # Staff Profiles Table
-        cur.execute("""
+        # 4. Personnel & Tracking
+        run_block("""
             CREATE TABLE IF NOT EXISTS staff_profiles (
                 id            SERIAL PRIMARY KEY,
                 name          VARCHAR(255) NOT NULL,
@@ -209,10 +219,9 @@ def init_db() -> None:
                 communication TEXT,
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        
-        # Telegram Bots Table (for multiple bot support)
-        cur.execute("""
+        """, "Staff Profiles")
+
+        run_block("""
             CREATE TABLE IF NOT EXISTS telegram_bots (
                 id SERIAL PRIMARY KEY,
                 bot_name VARCHAR(100) NOT NULL,
@@ -222,17 +231,16 @@ def init_db() -> None:
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """, "Telegram Bots")
 
-        # Telegram Users Table (bot registration: phone -> chat_id)
-        cur.execute("""
+        run_block("""
             CREATE TABLE IF NOT EXISTS telegram_users (
                 id SERIAL PRIMARY KEY,
                 phone_number VARCHAR(30) UNIQUE NOT NULL,
                 chat_id BIGINT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """, "Telegram Users")
 
         # Movement Log Table (Matched to member_timestamp as requested)
         cur.execute("""
@@ -286,6 +294,7 @@ def init_db() -> None:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS member_timestamp (
                 id SERIAL PRIMARY KEY,
+                person_id INTEGER,
                 camera_id VARCHAR(100),
                 camera_name VARCHAR(100),
                 person_type VARCHAR(20),     
@@ -364,8 +373,9 @@ def init_db() -> None:
                 day_status VARCHAR(20) DEFAULT 'open',
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS unique_staff_attendance ON attendance(staff_id, attendance_date)")
+        """, "Attendance Table")
+
+        run_block("CREATE UNIQUE INDEX IF NOT EXISTS unique_staff_attendance ON attendance(staff_id, attendance_date)", "Attendance Unique Index")
 
         # Backward-compatible schema alignment for existing attendance tables
         try:
@@ -452,6 +462,20 @@ def init_db() -> None:
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_date DATE")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS first_entry_time TIMESTAMP")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS last_exit_time TIMESTAMP")
+            
+            # Telegram Alerts Table (New for structured history)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS telegram_alerts (
+                    id SERIAL PRIMARY KEY,
+                    track_id INTEGER,
+                    camera_name VARCHAR(100),
+                    action VARCHAR(100),
+                    message_text TEXT,
+                    chat_id VARCHAR(255),
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status VARCHAR(50) DEFAULT 'sent'
+                )
+            """)
             
             # Make staff_id nullable in attendance table for 'Unknown' person logging
             cur.execute("ALTER TABLE attendance ALTER COLUMN staff_id DROP NOT NULL")

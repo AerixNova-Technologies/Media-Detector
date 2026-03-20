@@ -82,7 +82,8 @@ def route_settings_cameras():
 @dashboard_bp.route("/settings/integrations")
 @login_required
 def route_settings_integrations():
-    return render_template("settings/integrations.html")
+    from flask import redirect, url_for
+    return redirect(url_for('dashboard.route_telegram'))
 
 
 @dashboard_bp.route("/settings/users")
@@ -101,7 +102,12 @@ def route_settings_roles():
 def route_settings_appearance():
     return render_template("settings/appearance.html")
 
-@dashboard_bp.route("/general-movement")
+@dashboard_bp.route("/telegram")
 @login_required
-def route_general_movement():
-    return render_template("general_movement.html")
+def route_telegram():
+    return render_template("telegram.html")
+
+@dashboard_bp.route("/telegram/notifications")
+@login_required
+def route_telegram_notifications():
+    return render_template("telegram_notifications.html")

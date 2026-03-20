@@ -19,7 +19,6 @@
     <button class="s-pill active" onclick="showCat(event,'cat-general')">General</button>
     <button class="s-pill" onclick="showCat(event,'cat-cameras')">Cameras</button>
     <button class="s-pill" onclick="showCat(event,'cat-attendance')">Attendance</button>
-    <button class="s-pill" onclick="showCat(event,'cat-integrations')">Integrations</button>
     <button class="s-pill" onclick="showCat(event,'cat-system')">System</button>
   </div>
 
@@ -178,25 +177,6 @@
     </div>
   </div>
 
-  <!-- ══ INTEGRATIONS ══ -->
-  <div id="cat-integrations" class="s-cat">
-    <div class="s-section-header">
-      <div class="s-section-title">Third-Party Integrations</div>
-      <div class="s-section-sub">Connect external services and APIs</div>
-    </div>
-    <div class="s-card-grid">
-      {% if user_permissions.all or user_permissions.settings_view or not user_permissions %}
-      <a href="/settings/integrations" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">🔔</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Integrations Hub</div>
-          <div class="s-card-desc">Telegram bot and Cloud connection settings</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      {% endif %}
-    </div>
-  </div>
 
   <!-- ══ SYSTEM ══ -->
   <div id="cat-system" class="s-cat">
@@ -220,7 +200,7 @@
 </div>
 
 <style>
-.s-pill-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; background: var(--surface2); padding: 5px; border-radius: 10px; width: 100%; margin-bottom: 36px; border: 1px solid var(--border); }
+.s-pill-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--surface2); padding: 5px; border-radius: 10px; width: 100%; margin-bottom: 36px; border: 1px solid var(--border); }
 .s-pill { background: none; border: none; padding: 10px 20px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all 0.2s; text-align: center; }
 .s-pill:hover { color: var(--text); }
 .s-pill.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); border: 1px solid var(--border); }

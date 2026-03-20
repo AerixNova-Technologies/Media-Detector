@@ -80,6 +80,88 @@
         align-items: center;
         justify-content: center;
       }
+
+      /* Sidebar Submenu Styling */
+      .nav-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .nav-group-toggle {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        color: var(--muted);
+        transition: all 0.2s ease;
+      }
+
+      .nav-group-toggle:hover {
+        background: var(--surface2);
+        color: var(--text);
+      }
+
+      .nav-arrow {
+        margin-left: auto;
+        font-size: 16px;
+        transition: transform 0.3s ease;
+        opacity: 0.5;
+      }
+
+      .nav-group.open .nav-arrow {
+        transform: rotate(90deg);
+      }
+
+      .nav-sub {
+        display: none;
+        flex-direction: column;
+        gap: 2px;
+        padding-left: 44px;
+        margin-bottom: 4px;
+      }
+
+      .nav-group.open .nav-sub {
+        display: flex;
+      }
+
+      .nav-sub-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+      }
+
+      .nav-sub-item:hover {
+        color: var(--text);
+        background: var(--surface2);
+      }
+
+      .nav-sub-item.active {
+        color: var(--accent);
+        font-weight: 600;
+        background: var(--accent-bg);
+      }
+
+      .nav-dot {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: 0.4;
+      }
+
+      .app-layout.sidebar-collapsed .nav-arrow,
+      .app-layout.sidebar-collapsed .nav-sub {
+        display: none !important;
+      }
     </style>
     <!-- ─── Global Left Sidebar ─── -->
     <nav class="global-sidebar">
@@ -122,6 +204,24 @@
 
         {% if perms.all or perms.attendance_view or perms is not defined or not perms %}
         {{ nav_tab('Attendance', '📅', active=(active_page == 'attendance'), url='/attendance') }}
+        {% endif %}
+
+        {% if perms.all or perms.settings_view or perms is not defined or not perms %}
+        <div class="nav-group {{ 'open' if active_page in ['telegram', 'telegram_notifications'] else '' }}">
+          <div class="nav-tab nav-group-toggle {{ 'active' if active_page in ['telegram', 'telegram_notifications'] else '' }}" onclick="this.parentElement.classList.toggle('open')">
+            <span class="nav-icon">✈️</span>
+            <span class="nav-label">Telegram</span>
+            <span class="nav-arrow">›</span>
+          </div>
+          <div class="nav-sub">
+            <a href="/telegram" class="nav-sub-item {{ 'active' if active_page == 'telegram' else '' }}">
+              <span class="nav-dot"></span> Bot Settings
+            </a>
+            <a href="/telegram/notifications" class="nav-sub-item {{ 'active' if active_page == 'telegram_notifications' else '' }}">
+              <span class="nav-dot"></span> Telegram Notification
+            </a>
+          </div>
+        </div>
         {% endif %}
 
         {% if perms.all or perms.reports_view or perms is not defined or not perms %}

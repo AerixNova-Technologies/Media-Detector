@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% set active_page = 'telegram_notifications' %}
+
+{% block content %}
+<div style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
+  <div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
+    <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;">
+      <div>
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+          <span style="font-size:26px;">✈️</span>
+          <h1 style="font-size:24px; font-weight:800; color: var(--text); margin:0;">Telegram Notification</h1>
+        </div>
+        <p style="font-size:14px; color: var(--muted); margin:0;">Complete history of automated telegram notifications</p>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-right:8px; font-size:13px; color:var(--muted); cursor:pointer;" onclick="toggleSummaryColumn()">
+          <input type="checkbox" id="hide-summary-check" style="cursor:pointer;" onchange="toggleSummaryColumn()" />
+          <label for="hide-summary-check" style="cursor:pointer;">Hide Summary</label>
+        </div>
+        <button class="secondary-btn" onclick="loadAlerts()"><span>🔄</span> Refresh</button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="log-filter-row">
+      <div class="log-search-wrap" style="position:relative; min-width:0; flex:1; max-width:400px;">
+        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
+        <input id="alert-search" type="text" class="log-input" placeholder="Search by message or camera..." style="padding-left:36px;" oninput="debouncedLoadAlerts()" />
+      </div>
+      <div class="log-filter-group" id="date-range-container" style="min-width:240px;">
+        <div class="log-range-wrap">
+          <span style="font-size:15px;">📅</span>
+          <input id="alert-date-range" type="text" class="log-input" readonly placeholder="Pick a date range" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts Table -->
+    <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background: var(--surface);">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead style="background: var(--surface2);">
+          <tr>
+            <th class="log-th" style="width:80px;">Track ID</th>
+            <th class="log-th">Camera</th>
+            <th class="log-th">Action</th>
+            <th class="log-th summary-col">Message Snippet</th>
+            <th class="log-th">Status</th>
+            <th class="log-th">Chat ID</th>
+            <th class="log-th">Time</th>
+            <th class="log-th" style="width:60px; text-align:center;">Details</th>
+          </tr>
+        </thead>
+        <tbody id="alerts-table-body">
+          <tr><td colspan="7" class="log-empty">Initializing alerts...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div id="alerts-pagination" style="margin-top:16px; padding:12px 14px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
+    </div>
+  </div>
+</div>
+
+<!-- Details Modal -->
+<div id="details-modal" class="modal-overlay" onclick="closeDetailsModal()">
+  <div class="modal-content-details" onclick="event.stopPropagation()" style="max-width: 600px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:20px; border-bottom:1px solid var(--border);">
+      <h2 style="margin:0; font-size:18px;">Alert Message Details</h2>
+      <button class="close-btn" onclick="closeDetailsModal()">✕</button>
+    </div>
+    <div style="padding:24px;">
+       <div style="background: var(--bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: pre-wrap;" id="modal-message-text"></div>
+       <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+         <button class="secondary-btn" onclick="closeDetailsModal()">Close</button>
+       </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .log-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; outline: none; transition: border-color 0.2s; }
+  .log-input:focus { border-color: var(--accent); }
+  .log-filter-row { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:nowrap; }
+  .log-filter-group { display:flex; flex-direction:column; }
+  .log-range-wrap { display:flex; align-items:center; gap:8px; border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:0 10px; }
+  .log-range-wrap .log-input { border:none; background:transparent; padding:9px 0; cursor:pointer; }
+  .log-th { text-align:left; font-size:12px; color: var(--muted); padding: 12px 14px; border-bottom:1px solid var(--border); text-transform: uppercase; font-weight:700; }
+  .log-td { padding: 12px 14px; font-size: 13px; color: var(--text); border-bottom:1px solid var(--border); }
+  .log-empty { padding: 30px; text-align:center; color: var(--muted); font-size: 13px; }
+  
+  .badge-status { display:inline-block; font-size: 11px; font-weight:700; border-radius: 6px; padding: 4px 10px; text-transform: uppercase; }
+  .status-sent { background: var(--success-bg); color: var(--green); }
+  .status-failed { background: #fee2e2; color: #ef4444; }
+
+  .clickable-row { transition: background 0.2s; cursor:pointer; }
+  .clickable-row:hover { background: var(--surface2); }
+  
+  /* Modal Overlay */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 40px; }
+  .modal-overlay.active { display: flex; }
+  .modal-content-details { background: var(--surface); border-radius: 16px; width: 500px; max-width: 95vw; box-shadow: var(--shadow-lg); }
+  .close-btn { background: none; border: none; font-size: 20px; color: var(--muted); cursor: pointer; transition: color 0.2s; }
+  .close-btn:hover { color: var(--text); }
+</style>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+<script>
+  let alertSearchTimer = null;
+  let alertCurrentPage = 1;
+  let alertPageSize = 20;
+
+  function debouncedLoadAlerts() {
+    clearTimeout(alertSearchTimer);
+    alertSearchTimer = setTimeout(() => { alertCurrentPage = 1; loadAlerts(); }, 300);
+  }
+
+  function openMessageModal(text) {
+    document.getElementById('modal-message-text').textContent = text;
+    document.getElementById('details-modal').classList.add('active');
+  }
+
+  function closeDetailsModal() {
+    document.getElementById('details-modal').classList.remove('active');
+  }
+
+  function toggleSummaryColumn() {
+    const isChecked = document.getElementById('hide-summary-check').checked;
+    const cols = document.querySelectorAll('.summary-col');
+    cols.forEach(c => c.style.display = isChecked ? 'none' : 'table-cell');
+  }
+
+  function getDateRange() {
+    const rangeInput = document.getElementById('alert-date-range');
+    const picker = rangeInput?._flatpickr;
+    if (picker && picker.selectedDates.length) {
+      const from = picker.formatDate(picker.selectedDates[0], "Y-m-d");
+      const to = picker.selectedDates[1] ? picker.formatDate(picker.selectedDates[1], "Y-m-d") : from;
+      return { from, to };
+    }
+    return { from: '', to: '' };
+  }
+
+  function setPageSize(val) {
+    alertPageSize = parseInt(val, 10) || 20;
+    alertCurrentPage = 1;
+    loadAlerts();
+  }
+
+  function renderPagination(pagination) {
+    const container = document.getElementById('alerts-pagination');
+    if (!container) return;
+    
+    if (!pagination || pagination.total === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const start = (pagination.page - 1) * pagination.limit + 1;
+    const end = Math.min(pagination.page * pagination.limit, pagination.total);
+
+    container.innerHTML = `
+      <div style="display:flex; align-items:center; gap:16px;">
+        <span>Showing ${start} - ${end} of ${pagination.total} alerts</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span>Rows per page:</span>
+          <select class="log-input" style="width:78px; padding:4px 6px;" onchange="setPageSize(this.value)">
+            <option value="10" ${alertPageSize===10?'selected':''}>10</option>
+            <option value="20" ${alertPageSize===20?'selected':''}>20</option>
+            <option value="50" ${alertPageSize===50?'selected':''}>50</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="margin-right:6px;">Page ${pagination.page} / ${pagination.pages}</span>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(1)" ${alertCurrentPage === 1 ? 'disabled' : ''}>«</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(${alertCurrentPage - 1})" ${alertCurrentPage === 1 ? 'disabled' : ''}>‹</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(${alertCurrentPage + 1})" ${alertCurrentPage === pagination.pages ? 'disabled' : ''}>›</button>
+        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(${pagination.pages})" ${alertCurrentPage === pagination.pages ? 'disabled' : ''}>»</button>
+      </div>
+    `;
+  }
+
+  function changePage(page) {
+    alertCurrentPage = page;
+    loadAlerts();
+  }
+
+  async function loadAlerts() {
+    const q = document.getElementById('alert-search').value.trim();
+    const { from, to } = getDateRange();
+    
+    const params = new URLSearchParams({
+      page: alertCurrentPage,
+      page_size: alertPageSize
+    });
+    if (q) params.append('q', q);
+    if (from) params.append('date_from', from + ' 00:00:00');
+    if (to) params.append('date_to', to + ' 23:59:59');
+
+    const tbody = document.getElementById('alerts-table-body');
+    tbody.innerHTML = '<tr><td colspan="7" class="log-empty">Loading records...</td></tr>';
+
+    try {
+      const res = await fetch(`/api/telegram-alerts?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load alerts");
+      
+      const result = await res.json();
+      if (result.status !== 'success') throw new Error(result.message || 'Failed to load alerts');
+
+      const data = result.data;
+      const pagination = result.pagination;
+
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="log-empty">No telegram alerts found for the selected filters.</td></tr>';
+      } else {
+        const hideSummary = document.getElementById('hide-summary-check').checked;
+        tbody.innerHTML = data.map(alert => {
+          const msgSnippet = alert.message_text.length > 50 ? alert.message_text.substring(0, 50) + '...' : alert.message_text;
+          const statusClass = alert.status === 'sent' ? 'status-sent' : 'status-failed';
+          const summaryDisplay = hideSummary ? 'none' : 'table-cell';
+          return `
+            <tr class="clickable-row" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
+              <td class="log-td"><span style="font-family:monospace; font-weight:600; color:var(--accent);">#${alert.track_id || '-'}</span></td>
+              <td class="log-td">${alert.camera_name || '-'}</td>
+              <td class="log-td">${alert.action || '-'}</td>
+              <td class="log-td summary-col" style="font-size:12px; color:var(--muted); display: ${summaryDisplay};">${msgSnippet}</td>
+              <td class="log-td">
+                <span class="badge-status ${statusClass}">${alert.status}</span>
+              </td>
+              <td class="log-td" style="font-size:11px; color:var(--muted); max-width:150px; overflow:hidden; text-overflow:ellipsis;">${alert.chat_id || '-'}</td>
+              <td class="log-td" style="white-space:nowrap;">
+                <div style="font-weight:500;">${alert.timestamp.split(' ')[0]}</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">${alert.timestamp.split(' ')[1]}</div>
+              </td>
+              <td class="log-td" style="text-align:center;">
+                <button class="secondary-btn" style="padding:4px 8px;">View</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      renderPagination(pagination);
+
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="log-empty" style="color:#ef4444;">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    flatpickr("#alert-date-range", {
+      mode: "range",
+      dateFormat: "Y-m-d",
+      onClose: () => { alertCurrentPage = 1; loadAlerts(); }
+    });
+    loadAlerts();
+  });
+</script>
+{% endblock %}
