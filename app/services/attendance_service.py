@@ -17,7 +17,7 @@ log = logging.getLogger("attendance_service")
 
 
 
-def log_movement(camera_id: str, image_path: str, detected_at: datetime | None = None) -> int | None:
+def log_movement(camera_id: str, image_path: str, detected_at: datetime | None = None, track_id: int | None = None, event_type: str | None = None) -> int | None:
     """Store raw motion event (all classes: human/animal/unknown)."""
     log.debug(f"log_movement called for {camera_id} with image: {image_path}")
     detected_at = detected_at or datetime.now()
@@ -25,10 +25,10 @@ def log_movement(camera_id: str, image_path: str, detected_at: datetime | None =
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO movement_log (camera_id, image_path, detected_at)
-            VALUES (%s, %s, %s)
+            INSERT INTO movement_log (camera_id, image_path, detected_at, track_id, event_type)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING id
-        """, (camera_id, image_path, detected_at))
+        """, (camera_id, image_path, detected_at, track_id, event_type))
         row = cur.fetchone()
         conn.commit()
         ret_id = row["id"] if row else None
@@ -80,6 +80,8 @@ def log_person(
     confidence: float,
     staff_name: str | None = None,
     detected_at: datetime | None = None,
+    track_id: int | None = None,
+    event_type: str | None = 'ENTRY',
 ):
     """Store human detections (staff/unknown) in member_timestamp."""
     detected_at = detected_at or datetime.now()
@@ -96,10 +98,10 @@ def log_person(
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO member_timestamp 
-            (camera_id, person_type, staff_id, staff_name, image_path, confidence_score, detected_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (camera_id, person_type, staff_id, staff_name, image_path, confidence_score, detected_at, track_id, event_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (camera_id, person_type, staff_id, staff_name, image_path, confidence, detected_at))
+        """, (camera_id, person_type, staff_id, staff_name, image_path, confidence, detected_at, track_id, event_type))
         row = cur.fetchone()
         conn.commit()
         res_id = row["id"] if row else None
@@ -125,7 +127,63 @@ def log_person(
         conn.close()
 
 
-def update_exit_logs(member_id: int, movement_id: int, exit_image: str, merged_image: str):
+def update_person_identity(member_id: int, movement_id: int, staff_id: int, staff_name: str):
+    """Update existing logs with staff info (used if recognized late)."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        if member_id:
+            log.info(f"DB: Updating member_timestamp #{member_id} to staff {staff_name} (ID: {staff_id})")
+            cur.execute("""
+                UPDATE member_timestamp 
+                SET person_type = 'staff', staff_id = %s, staff_name = %s
+                WHERE id = %s
+            """, (staff_id, staff_name, member_id))
+            
+            # SSE UPDATE so the UI refreshes from "Unknown" to "Staff Name"
+            sse_manager.announce({
+                "id": member_id,
+                "person_type": "staff",
+                "staff_id": staff_id,
+                "staff_name": staff_name,
+                "update_type": "late_recognition"
+            }, event_type="member_log_update")
+
+        if movement_id:
+            cur.execute("""
+                UPDATE movement_log 
+                SET person_type = 'staff', staff_id = %s, staff_name = %s
+                WHERE id = %s
+            """, (staff_id, staff_name, movement_id))
+        conn.commit()
+    except Exception as e:
+        log.error(f"Failed to update person identity: {e}")
+    finally:
+        conn.close()
+
+
+def get_recent_sighting(staff_id: int, camera_id: str, minutes: int = 5) -> int | None:
+    """Find a recent entry for the same staff member to avoid duplicate rows."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id FROM member_timestamp
+            WHERE staff_id = %s AND camera_id = %s 
+              AND detected_at > NOW() - INTERVAL '%s minutes'
+              AND event_type = 'ENTRY'
+            ORDER BY detected_at DESC LIMIT 1
+        """, (staff_id, camera_id, minutes))
+        row = cur.fetchone()
+        return row["id"] if row else None
+    except Exception as e:
+        log.error(f"Error checking recent sightings: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def update_exit_logs(member_id: int, movement_id: int, exit_image: str, merged_image: str, track_id: int | None = None):
     """Update both tables with exit and merged images."""
     conn = get_db_connection()
     try:
@@ -133,13 +191,13 @@ def update_exit_logs(member_id: int, movement_id: int, exit_image: str, merged_i
         if member_id:
             cur.execute("""
                 UPDATE member_timestamp 
-                SET exit_image = %s, merged_image = %s, exit_time = NOW()
+                SET exit_image = %s, merged_image = %s, exit_time = NOW(), event_type = 'EXIT'
                 WHERE id = %s
             """, (exit_image, merged_image, member_id))
         if movement_id:
             cur.execute("""
                 UPDATE movement_log 
-                SET exit_image = %s, merged_image = %s, exit_time = NOW()
+                SET exit_image = %s, merged_image = %s, exit_time = NOW(), event_type = 'EXIT'
                 WHERE id = %s
             """, (exit_image, merged_image, movement_id))
         conn.commit()

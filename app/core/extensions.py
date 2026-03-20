@@ -26,7 +26,11 @@ AI_TOGGLES: dict[str, bool] = {
 }
 
 # ── Lazy-initialized singletons ──────────────────────────────────────────────
-# These are initialized once at startup (not inside request context).
+# We use module-level __getattr__ (Python 3.7+) to load models ONLY when accessed.
+# This makes internal scripts and the Flask reloader start instantly.
+
+_cam_mgr  = None
+_notifier = None
 
 def _make_camera_manager():
     from app.services.camera_service import CameraManager
@@ -35,14 +39,20 @@ def _make_camera_manager():
     log.info("Camera Manager ready.")
     return mgr
 
-
 def _make_notifier():
     from app.services.ai.notifier import TelegramNotifier
     return TelegramNotifier()
 
-
-# Build singletons at import time (module-level, happens once at startup)
-cam_mgr  = _make_camera_manager()
-notifier = _make_notifier()
+def __getattr__(name):
+    global _cam_mgr, _notifier
+    if name == "cam_mgr":
+        if _cam_mgr is None:
+            _cam_mgr = _make_camera_manager()
+        return _cam_mgr
+    if name == "notifier":
+        if _notifier is None:
+            _notifier = _make_notifier()
+        return _notifier
+    raise AttributeError(f"module {__name__} has no attribute {name}")
 
 

@@ -41,7 +41,7 @@ MOTION_COOLDOWN_SEC: float = 30.0
 
 # ─── Person Detection (YOLOv8) ─────────────────────────────────────────────
 YOLO_MODEL:       str   = "yolov8n.pt"  # Nano Model: Exact speed of reference videos
-YOLO_CONF:        float = 0.50          # Professional precision for member logs
+YOLO_CONF:        float = 0.30          # Ultra-stable "sticky" detection
 YOLO_DEVICE:      str   = "cpu" 
 YOLO_SKIP_FRAMES: int   = 0             # Direct movement processing
 
@@ -71,10 +71,10 @@ ACTION_SLOW_STRIDE: int  = 8
 ACTION_DEVICE:      str  = "cpu"
 
 # ─── Threading ─────────────────────────────────────────────────────────────
-AI_THREAD_FRAME_SKIP: int = 3            # Optimized for 640px on CPU
+AI_THREAD_FRAME_SKIP: int = 1            # Faster AI processing (3 -> 1)
 
 # Result age: match the AI thread speed (Clean-Surveillance Profile)
-RESULT_MAX_AGE_SEC: float = 2.5
+RESULT_MAX_AGE_SEC: float = 10.0
 
 # ─── Counting (Tripwire) ──────────────────────────────────────────────────
 ENABLE_COUNTING: bool = True

@@ -9,6 +9,7 @@ face so that downstream emotion analysis gets the most prominent face.
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 try:
@@ -82,3 +83,22 @@ class FaceDetector:
                 best = [px1 + fx1, py1 + fy1, px1 + fx2, py1 + fy2]
 
         return best
+    def is_high_quality(self, face_crop: np.ndarray, min_sharpness: float = 30.0) -> bool:
+        """
+        Check if a face crop is sharp and large enough for recognition.
+        Useful to prevent 'wrong recognition' from blurry/distant faces.
+        """
+        if face_crop is None or face_crop.size == 0:
+            return False
+        
+        h, w = face_crop.shape[:2]
+        if h < 30 or w < 30: # Relaxed from 40 to 30 for distant faces
+            return False
+
+        # Sharpness check via Laplacian variance
+        try:
+            gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+            sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+            return sharpness >= min_sharpness
+        except Exception:
+            return False

@@ -23,6 +23,10 @@ import logging
 import os
 import sys
 
+# ── Environment ──────────────────────────────────────────────────────────────
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
 # ── Load .env BEFORE importing anything else ─────────────────────────────────
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 if os.path.exists(_env_path):
@@ -57,6 +61,7 @@ if __name__ == "__main__":
 
     if dev_mode:
         log.info("Starting in DEVELOPMENT mode on http://localhost:%d", port)
+        os.environ["FLASK_DEBUG"] = "1"
         flask_app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)
     else:
         try:

@@ -38,21 +38,22 @@ def create_app() -> Flask:
     def inject_user_data():
         from flask import session
         try:
+            # System Branding & Settings (Must be available even to logged-out users for Login/Sign-up)
             from app.db.session import get_db_connection
-            user_email = session.get("user")
-            if not user_email: 
-                return dict(user_permissions={}, user_info=None)
-            
             conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT u.name, u.email, r.permissions FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s", (user_email,))
-            row = cur.fetchone()
-            # System Branding
             cur = conn.cursor()
             cur.execute("SELECT key, value FROM system_settings")
             settings_rows = cur.fetchall()
             sys_settings = {r['key']: r['value'] for r in settings_rows}
             
+            user_email = session.get("user")
+            if not user_email: 
+                cur.close()
+                conn.close()
+                return dict(user_permissions={}, user_info=None, sys_settings=sys_settings)
+            
+            cur.execute("SELECT u.name, u.email, r.permissions FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s", (user_email,))
+            row = cur.fetchone()
             cur.close()
             conn.close()
             

@@ -71,6 +71,7 @@ class PersonDetector:
         self.model = YOLO(model_path)
         self.conf_threshold = conf_threshold
         self.device = device
+        self._untracked_count = 0 
 
     # ------------------------------------------------------------------
     def detect(self, frame: np.ndarray) -> list[list[float]]:
@@ -118,6 +119,51 @@ class PersonDetector:
             log.info("YOLO: All detections were filtered out by giant/tiny rules.")
 
         return boxes
+
+    def track(self, frame: np.ndarray, persist: bool = True) -> list[list[float]]:
+        """
+        Run YOLOv8 tracking on *frame* (ByteTrack).
+        Returns list of [x1, y1, x2, y2, confidence, track_id]
+        """
+        if not HAS_YOLO: return []
+        
+        # Lowered conf to 0.25 for better sensitivity
+        # Removed explicit tracker yaml to use internal default
+        results = self.model.track(
+            frame,
+            persist=persist,
+            classes=[self.PERSON_CLASS_ID],
+            conf=0.30, 
+            iou=0.5,
+            device=self.device,
+            verbose=False
+        )
+
+        tracks: list[list[float]] = []
+        for result in results:
+            if result.boxes is None:
+                continue
+            
+            # Log raw detections for debugging
+            if len(result.boxes) > 0:
+                log.info(f"YOLO: Found {len(result.boxes)} persons in frame")
+            
+            # Fallback for frames where tracker might not have assigned IDs yet
+            # We use UNIQUE negative IDs to prevent cache collisions in FaceRecognizer
+            if result.boxes.id is not None:
+                ids = result.boxes.id.tolist()
+            else:
+                ids = []
+                for _ in range(len(result.boxes)):
+                    self._untracked_count += 1
+                    ids.append(-(1000 + (self._untracked_count % 10000)))
+            
+            for box, tid, conf in zip(result.boxes.xyxy, ids, result.boxes.conf):
+                x1, y1, x2, y2 = box.tolist()
+                track_id = int(tid)
+                tracks.append([x1, y1, x2, y2, float(conf), track_id])
+
+        return tracks
 
     # ------------------------------------------------------------------
     def detect_objects(self, frame: np.ndarray) -> dict[str, list[list[float]]]:

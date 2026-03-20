@@ -505,6 +505,12 @@ def api_upload_staff():
         if conn:
             conn.close()
 
+    # RELOAD AI to include new photos
+    try:
+        cam_mgr.reload_faces()
+    except Exception as e:
+        log.warning("Could not reload faces: %s", e)
+
     return jsonify({"success": True, "saved_count": saved_count})
 
 
@@ -571,6 +577,10 @@ def api_staff_profile(staff_name: str):
             cur = conn.cursor()
             cur.execute("DELETE FROM staff_profiles WHERE name = %s", (staff_name,))
             conn.commit()
+            
+            # RELOAD AI
+            cam_mgr.reload_faces()
+            
         except Exception as e:
             log.error("Error deleting staff from DB: %s", e)
         finally:
@@ -679,6 +689,10 @@ def api_delete_staff_photo(staff_name: str, filename: str):
         os.remove(file_path)
         if not os.listdir(staff_dir):   # remove empty folder
             os.rmdir(staff_dir)
+        
+        # RELOAD AI
+        cam_mgr.reload_faces()
+        
         return jsonify({"success": True})
 
     return jsonify({"error": "File not found"}), 404
@@ -854,6 +868,10 @@ def api_staff_import():
             count += 1
             
         conn.commit()
+        
+        # RELOAD AI
+        cam_mgr.reload_faces()
+        
         cur.close()
         conn.close()
         

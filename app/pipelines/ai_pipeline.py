@@ -146,25 +146,13 @@ class AIPipeline(threading.Thread):
         self._full_w: int = cfg.FRAME_WIDTH
         self._full_h: int = cfg.FRAME_HEIGHT
 
-        # Detection-based Counting & Forensic Logs
+        # Detection-based Counting & Forensic Logs (Refactored to Track-Based)
+        self.track_data: dict[int, dict] = {} # {tid: {"frames": [], "recognized": bool, "identity": dict, "best_frame": ndarray, ...}}
         self._seen_ids: set[int] = set()
         self._active_ids: set[int] = set()
         self.entries = 0
         self.exits   = 0
-        self._entry_best_frames: dict[int, np.ndarray] = {}
-        self._exit_best_frames:  dict[int, np.ndarray] = {}
-        self._best_entry_scores: dict[int, float]      = {}
-        self._best_exit_scores:  dict[int, float]      = {}
-        self._track_start_time:  dict[int, float]      = {}
         self._exit_taken: set[int] = set()
-        self._db_sessions: dict[int, int] = {}
-        self._entry_filenames: dict[int, str] = {}
-        self._exit_filenames: dict[int, str] = {}
-        self._track_att_ids: dict[int, int] = {}
-        self._current_frame_motion_id = None
-        self._current_frame_motion_img = None
-        self._last_motion_img = None  # Keep last motion image for logging persons across frames
-        self._last_member_log_mono: dict[int, float] = {}
         self._last_face_reload = time.monotonic()
         os.makedirs(cfg.SNAPSHOT_DIR, exist_ok=True)
 
@@ -222,9 +210,18 @@ class AIPipeline(threading.Thread):
         fut = self._emotion_futures.get(tid)
         if fut is not None and not fut.done():
             return
-        self._emotion_futures[tid] = self._emotion_executor.submit(
-            self.emotion_det.analyse, crop.copy(), tid
-        )
+            
+        def _task():
+            try:
+                res = self.emotion_det.analyse(crop, tid)
+                if tid in self.track_data:
+                    self.track_data[tid]["emotion"] = res
+                return res
+            except Exception as e:
+                log.debug("Emotion task error: %s", e)
+                return ""
+                
+        self._emotion_futures[tid] = self._emotion_executor.submit(_task)
 
     def _submit_rec(self, ai_frame: np.ndarray, bbox: list[float], tid: int) -> None:
         """Asynchronously detect face AND recognize identity."""
@@ -234,14 +231,38 @@ class AIPipeline(threading.Thread):
             
         def _task():
             try:
+                # Local re-detection of face inside the person box
                 face_bbox = self.face_det.detect_in_crop(ai_frame, bbox)
                 if face_bbox:
                     fx1, fy1, fx2, fy2 = (int(v) for v in face_bbox)
                     face_crop = ai_frame[max(0,fy1):min(ai_frame.shape[0],fy2), max(0,fx1):min(ai_frame.shape[1],fx2)]
                     if face_crop.size > 0:
+                        # PROACTIVE: Allow first attempt even if quality is just "okay"
+                        # We use 15.0 as a floor for complete garbage images
+                        if not self.face_det.is_high_quality(face_crop, min_sharpness=15.0):
+                            log.debug(f"AI: Recognition skipped for Track {tid} - Image too poor")
+                            return "Unknown"
+
                         res = self.face_rec.recognize(face_crop, tid)
-                        self.face_rec._cache[tid] = res
-                        return res["name"]
+                        
+                        # UPDATE: Identity Voting Mechanism
+                        if res and res.get("name") != "Unknown":
+                            if tid in self.track_data:
+                                td = self.track_data[tid]
+                                votes = td.get("id_votes", {})
+                                name = res["name"]
+                                votes[name] = votes.get(name, 0) + 1
+                                td["id_votes"] = votes
+                                
+                                # If we have 2 consistent votes, or 1 decent vote with good clarity, confirm it
+                                if votes[name] >= 2 or (votes[name] >= 1 and td.get("best_clarity", 0) > 250):
+                                    td["identity"] = name
+                                    td["staff_db_id"] = res.get("id")
+                                    td["display_id"] = f"{name} (#{tid})"
+                                    td["recognized"] = True # Confirmed
+                                    log.info(f"AI: [VOTING] Confirmed {name} for Track {tid} ({votes[name]} votes, Clarity: {td.get('best_clarity', 0):.0f})")
+                        
+                        return res.get("name", "Unknown")
             except Exception as e:
                 log.debug("Rec task error: %s", e)
             return "Unknown"
@@ -252,6 +273,9 @@ class AIPipeline(threading.Thread):
 
     def _process(self, ai_frame: np.ndarray, full_w: int, full_h: int) -> AIResult:
         global _total_motion_events
+        motion = False
+        mask = None
+        track_results = []
 
         try:
             try:
@@ -277,25 +301,25 @@ class AIPipeline(threading.Thread):
             if self._frame_idx % 10 == 0:
                 log.info("AI: Processing frame #%d", self._frame_idx)
 
-            # 1) Movement stage: store manual motion snapshot if MOG2 triggers
+            # --- 1. Movement stage ---
             motion, mask = self.motion_det.detect(ai_frame)
-            now = time.monotonic()
-            movement_id = None
-            movement_label, movement_conf = "unknown", 0.0
-            force_person_scan = False
+            if motion:
+                _total_motion_events += 1
             
-            # Hybrid Trigger: MOG2 Motion OR YOLO-confirmed person (via classify_motion)
-            # This ensures that even if MOG2 doesn't see "movement" (e.g. slow moving person), 
-            # if YOLO sees a human, we still capture a snapshot.
-            yolo_human = False
-            if not motion or (now - self._last_motion_time) > 2.0:
-                movement_label, movement_conf = self.person_det.classify_motion(ai_frame)
-                yolo_human = (movement_label == "human")
+            # --- 2. YOLO Detection & Tracking (Every Frame) ---
+            self._last_detections = self.person_det.track(ai_frame, persist=True)
+            yolo_human = len(self._last_detections) > 0
+            
+            if yolo_human:
+                self._last_yolo_human_time = now
+                if self._frame_idx % 30 == 0: 
+                    log.info(f"AI: YOLO found {len(self._last_detections)} persons")
 
-            trigger_snapshot = (motion or yolo_human) and (now - self._last_motion_time) > 2.0
-
+            # Snapshot Logic: Capture for new tracks or if first time seeing human in 5s
+            trigger_snapshot = yolo_human and (now - self._last_motion_time) > 5.0
+            
             if trigger_snapshot:
-                log.info(f"Movement Triggered: MOG2={motion}, YOLO_Human={yolo_human}")
+                log.info(f"Movement Triggered: Watchdog_YOLO_Human={yolo_human}")
                 motion_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 motion_filename = f"motion_{self.camera_name.replace(' ', '_')}_{motion_ts}.jpg"
                 motion_dir = os.path.join("static", "uploads", "movement")
@@ -308,222 +332,304 @@ class AIPipeline(threading.Thread):
                 self._current_frame_motion_img = f"static/uploads/movement/{motion_filename}"
                 self._last_motion_img = self._current_frame_motion_img
                 
-                movement_id = log_movement(self.camera_name, self._current_frame_motion_img)
-                force_person_scan = yolo_human
-                if movement_id:
-                    update_movement_classification(movement_id, movement_label, movement_conf)
+                self._current_frame_motion_id = log_movement(
+                    camera_id=self.camera_name, 
+                    image_path=self._current_frame_motion_img, 
+                    track_id=None, 
+                    event_type='MOTION_YOLO'
+                )
+                if self._current_frame_motion_id:
+                    update_movement_classification(self._current_frame_motion_id, 'human', 1.0)
                 self._last_motion_time = now
 
-            # 2) Human detection/tracking
-            if AI_TOGGLES.get("person", True):
-                if force_person_scan or self._frame_idx % max(1, cfg.YOLO_SKIP_FRAMES) == 0:
-                    self._last_detections = self.person_det.detect(ai_frame)
-                    if len(self._last_detections) > 0:
-                        log.info("AI: YOLO found %d persons", len(self._last_detections))
-            else:
-                self._last_detections = []
-
-            if AI_TOGGLES.get("action", True) and self._frame_idx % 5 == 0:
+            # 1.5) Object detection (Phone/Food) for rule-based actions
+            if self._frame_idx % 10 == 0:
                 self._last_objects = self.person_det.detect_objects(ai_frame)
-            elif not AI_TOGGLES.get("action", True):
-                self._last_objects = {"food": [], "phone": []}
 
-            # 3) Tracker
-            raw_tracks = self.tracker.update(self._last_detections, ai_frame)
-            active_ids = {t.track_id for t in raw_tracks}
-            if len(active_ids) > 0 or len(self._last_detections) > 0:
-                log.info("AI: Tracker active_ids: %s", list(active_ids))
+            # 2) Human detection/tracking (Already scanned in Watchdog logic above)
+            pass
+
+            # 3) Tracker Update (ByteTrack)
+            raw_tracks = self.tracker.update(self._last_detections)
             
-            # 1. New Entrants
-            for tid in active_ids:
-                if tid not in self._seen_ids:
-                    self.entries += 1
-                    self._seen_ids.add(tid)
-                    self._track_start_time[tid] = now
-                    log.info(f"COUNT: New person entering frame (ID: {tid}). Total Entries: {self.entries}")
+            # --- SPATIAL DEDUPLICATION (Fix for multiple boxes on one person) ---
+            # Sort by track_id (older tracks first) to prioritize stability
+            raw_tracks = sorted(raw_tracks, key=lambda t: t.track_id)
+            filtered_tracks = []
+            for t in raw_tracks:
+                keep = True
+                for ft in filtered_tracks:
+                    iou = self._calculate_iou(t.bbox, ft.bbox)
+                    if iou > 0.5: # 50% overlap means it's likely the same person
+                        keep = False
+                        break
+                if keep:
+                    filtered_tracks.append(t)
+            
+            raw_tracks = filtered_tracks
+            active_ids = {t.track_id for t in raw_tracks}
+            
+            # ── PER-TRACK STATE PROCESSING ──
+            for track in raw_tracks:
+                tid = track.track_id
+                bbox = track.bbox
+                
+                # Initialize track data if new
+                if tid not in self.track_data:
+                    self.track_data[tid] = {
+                        "frames": [],           
+                        "recognized": False,    
+                        "logged": False,        
+                        "identity": "Unknown",  
+                        "staff_id": None,       
+                        "best_frame": None,     
+                        "best_full": None,      
+                        "best_clarity": -1.0,   
+                        "last_log_time": 0,     
+                        "start_time": now,
+                        "db_id": None,          
+                        "missing_count": 0,     # GRACE PERIOD
+                        "is_accounted": False   # Has it been counted in self.entries?
+                    }
+                
+                td = self.track_data[tid]
+                td["missing_count"] = 0 # Reset grace period
+                
+                # Increment entries ONLY once per unique STABLE track lifecycle
+                if tid > 0 and not td.get("is_accounted"):
+                    self.entries += 1 
+                    td["is_accounted"] = True
+                    log.info(f"COUNT: Person entering (ID: {tid}). Total: {self.entries}")
+                
+                current_id = td.get("identity", "Unknown")
+                
+                # --- PRE-ID POLLING (Always try to get identity before logging/HUD) ---
+                cached = self.face_rec._cache.get(tid)
+                if cached:
+                    new_id = cached.get("name", "Unknown")
+                    if new_id != "Unknown":
+                        td["identity"] = new_id
+                        current_id = new_id
+                        td["staff_db_id"] = cached.get("id")
+                        td["display_id"] = f"{new_id} (#{tid})"
+                        
+                        # Late Update: If already logged as Unknown, fix it now
+                        if td["logged"] and not td.get("id_synced"):
+                            from app.services.attendance_service import update_person_identity
+                            log.info(f"AI: [LATE ID UPDATE] Synchronizing Track {tid} -> {new_id}")
+                            update_person_identity(member_id=td["db_id"], movement_id=None, staff_id=td["staff_db_id"], staff_name=new_id)
+                            td["id_synced"] = True
 
-            # 2. Exits: IDs that WERE active but are now gone
+                # A. Frame Collection...
+                
+                # A. Frame Collection (collect up to 50 for better selection and 30-frame log delay)
+                if len(td["frames"]) < 50:
+                    clarity = self._calculate_clarity(ai_frame, bbox)
+                    bx1, by1, bx2, by2 = (max(0, int(v)) for v in bbox)
+                    bx2, by2 = min(ai_w, bx2), min(ai_h, by2)
+                    crop = ai_frame[by1:by2, bx1:bx2]
+                    
+                    if crop.size > 0:
+                        td["frames"].append({"clarity": clarity})
+                        if clarity > td["best_clarity"]:
+                            td["best_clarity"] = clarity
+                            td["best_frame"] = crop.copy() # Face/Person crop
+                            # Store full frame with a box for context
+                            full_snap = ai_frame.copy()
+                            cv2.rectangle(full_snap, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+                            td["best_full"] = full_snap
+                            td["best_bbox"] = bbox
+
+                # B. Recognition Trigger (PROACTIVE: Try early, try often)
+                is_much_better = td["best_clarity"] > (td.get("last_trigger_clarity", 0) * 1.5)
+                
+                num_frames = len(td["frames"])
+                should_trigger = not td["recognized"] and (
+                    num_frames == 1 or            # IMMEDIATE: Try once as soon as person enters
+                    num_frames % 5 == 0 or        # PERIODIC: Retry every 5 frames if still unknown
+                    td["best_clarity"] > 400      # HIGH QUALITY: Force retry if we found a super sharp frame
+                )
+                
+                # Throttle: Only trigger again if we haven't tried in 2s OR if we found a MUCH sharper frame
+                last_try_time = td.get("last_rec_time", 0)
+                if should_trigger and (now - last_try_time > 2.0 or is_much_better):
+                    if td["best_frame"] is not None:
+                        td["last_rec_time"] = now
+                        td["last_trigger_clarity"] = td["best_clarity"]
+                        self._submit_rec(ai_frame.copy(), td["best_bbox"], tid)
+                        if AI_TOGGLES.get("action", True):
+                            self._submit_emotion(td["best_frame"], tid)
+                        log.info(f"AI: Triggering recognition for Track {tid} (Clarity: {td['best_clarity']:.1f}, Try #{td.get('id_votes', {}).get('attempts', 0) + 1})")
+                        
+                        # Increment attempts
+                        votes = td.get("id_votes", {})
+                        votes["attempts"] = votes.get("attempts", 0) + 1
+                        td["id_votes"] = votes
+
+                # B. Recognition Trigger...
+
+                # D. Entry Logging (Delayed to allow recognition to catch up)
+                # We wait until frame 30 before committing to an "UNKNOWN" label
+                if not td["logged"] and (td["recognized"] or len(td["frames"]) >= 30):
+                    # STRICT CLARITY: User wants clear photos, but 100 is a safe floor
+                    if td["best_clarity"] < 100:
+                        log.debug(f"AI: Skipping Entry log for Track {tid} - Low Clarity ({td['best_clarity']:.1f})")
+                    else:
+                        person_type = "staff" if current_id != "Unknown" else "unknown"
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        
+                        # Save FULL FRAME evidence (Context)
+                        full_filename = f"entry_full_{tid}_{ts}.jpg"
+                        full_path = os.path.join("static", "uploads", "movement", full_filename)
+                        if td["best_full"] is not None:
+                            cv2.imwrite(full_path, td["best_full"])
+                        
+                        # Save FACE CROP (Forensics)
+                        crop_filename = f"entry_crop_{tid}_{ts}.jpg"
+                        crop_path = os.path.join("static", "uploads", "movement", crop_filename)
+                        if td["best_frame"] is not None:
+                            cv2.imwrite(crop_path, td["best_frame"])
+
+                        from app.services.attendance_service import log_person, get_recent_sighting
+                        
+                        # DEDUPLICATION: Avoid row spam for the same staff member
+                        s_id = td.get("staff_db_id")
+                        existing_visit_id = None
+                        if s_id:
+                            existing_visit_id = get_recent_sighting(s_id, self.camera_name)
+                        
+                        if existing_visit_id:
+                            log.info(f"AI: [DEDUPLICATED] Track {tid} ({current_id}) linked to recent visit {existing_visit_id}")
+                            td["db_id"] = existing_visit_id
+                        else:
+                            res_id = log_person(
+                                camera_id=self.camera_name,
+                                person_type=person_type,
+                                staff_id=s_id,
+                                image_path=f"static/uploads/movement/{full_filename}", # UI shows context
+                                confidence=td["best_clarity"],
+                                staff_name=current_id if person_type == "staff" else None,
+                                track_id=tid,
+                                event_type='ENTRY'
+                            )
+                            td["db_id"] = res_id
+                        
+                        td["logged"] = True
+                        log.info(f"AI: Logged {person_type} Entry for Track {tid} ({current_id})")
+
+            # ── EXIT HANDLING (With 30-frame Grace Period) ──
+            # self._active_ids contains IDs from PREVIOUS frame
             for tid in list(self._active_ids):
                 if tid not in active_ids:
-                    self.exits += 1
-                    log.info(f"COUNT: Person left (ID: {tid}). Total Exits: {self.exits}")
+                    td = self.track_data.get(tid)
+                    if not td: continue
                     
-                    for d in [self._entry_best_frames, self._exit_best_frames, self._best_entry_scores, 
-                              self._best_exit_scores, self._track_start_time, self._db_sessions, 
-                              self._entry_filenames, self._exit_filenames, self._track_att_ids]:
-                        if tid in d: del d[tid]
-                    if tid in self._exit_taken: self._exit_taken.remove(tid)
+                    td["missing_count"] += 1
+                    # Only confirm exit after 15 frames of silence (approx 1s)
+                    # Lowered from 30 to 15 to handle rapid in/out testing better
+                    if td["missing_count"] > 15:
+                        self.exits += 1
+                        if td["logged"]:
+                            exit_image_path = ""
+                            best_full = td.get("best_full")
+                            if best_full is not None:
+                                exit_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                exit_filename = f"exit_full_{tid}_{exit_ts}.jpg"
+                                exit_image_path = os.path.join("static", "uploads", "movement", exit_filename)
+                                cv2.imwrite(exit_image_path, best_full)
+                                exit_image_path = f"static/uploads/movement/{exit_filename}"
 
-            # 4) Promotion stage: movement_log -> member_timestamp
-            # FALLBACK: If we have persons but no motion image yet, capture one NOW.
-            if not self._last_motion_img and raw_tracks:
-                log.info("DEBUG: Detections present but no motion image. Capturing fallback snapshot...")
-                motion_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                motion_filename = f"det_fallback_{self.camera_name.replace(' ', '_')}_{motion_ts}.jpg"
-                motion_dir = os.path.join("static", "uploads", "movement")
-                os.makedirs(motion_dir, exist_ok=True)
-                motion_path = os.path.join(motion_dir, motion_filename)
-                cv2.imwrite(motion_path, ai_frame)
-                self._last_motion_img = f"static/uploads/movement/{motion_filename}"
-                log.info(f"DEBUG: Fallback snapshot saved: {self._last_motion_img}")
-
-            if self._last_motion_img and raw_tracks:
-                for track in raw_tracks:
-                    tid = track.track_id
-                    if (now - self._last_member_log_mono.get(tid, 0.0)) < 1.5:
-                        continue
-
-                    bbox = track.bbox
-                    bx1, by1, bx2, by2 = (max(0, int(v)) for v in bbox)
-                    bx2 = min(ai_w, bx2)
-                    by2 = min(ai_h, by2)
-                    person_crop = ai_frame[by1:by2, bx1:bx2]
-                    if person_crop.size == 0:
-                        continue
-
-                    rec = self.face_rec._cache.get(tid, {"id": None, "name": "Unknown", "display_id": ""})
-                    if rec.get("name", "Unknown") == "Unknown":
-                        try:
-                            rec = self.face_rec.recognize(person_crop, tid)
-                        except Exception as e:
-                            log.debug("Direct recognition failed for tid=%s: %s", tid, e)
-
-                    identity = rec.get("name", "Unknown")
-                    staff_id = rec.get("id")
-                    
-                    # FINAL HUMAN VERIFICATION
-                    # Always verify it's a "human" and not a false positive (shadow/light/ghost).
-                    v_label, v_conf = self.person_det.classify_motion(person_crop)
-                    if v_label != "human":
-                        log.debug(f"DEBUG: Skipping promotion for TID {tid} - classify result: {v_label} ({v_conf:.2f})")
-                        continue
-
-                    if staff_id and identity != "Unknown":
-                        person_type = "staff"
-                    else:
-                        person_type = "unknown"
-
-                    confidence = self._calculate_clarity(ai_frame, bbox)
-                    
-                    if (now - self._track_start_time.get(tid, now)) < 0.5:
-                        continue
-
-                    log.info(f"DEBUG: Promoting track {tid} ({person_type}) to member_timestamp")
-                    member_id = log_person(
-                        self.camera_name,
-                        person_type,
-                        staff_id,
-                        self._last_motion_img,
-                        confidence,
-                        staff_name=identity if person_type == "staff" else None,
-                    )
-                    if member_id:
-                        self._last_member_log_mono[tid] = now
-
-                    if person_type == "staff" and staff_id:
-                        log.info(f"DEBUG: STAFF FOUND! Calling track_staff_attendance for {identity} (ID:{staff_id})")
-                        attendance = track_staff_attendance(
-                            staff_id=staff_id,
-                            staff_name=identity,
-                            entry_image=self._last_motion_img,
-                        )
-                        log.info(f"DEBUG: track_staff_attendance result: {attendance}")
-                        if attendance.get("is_first_entry"):
-                            self.notifier.send_message(
-                                f"✅ *ATTENDANCE*: {identity} first detected today on {self.camera_name}."
+                            from app.services.attendance_service import update_exit_logs
+                            update_exit_logs(
+                                member_id=td.get("db_id"),
+                                movement_id=None, 
+                                exit_image=exit_image_path,
+                                merged_image="",
+                                track_id=tid
                             )
-                    else:
-                        log.info(f"DEBUG: Person type is {person_type}, staff_id is {staff_id} - NOT calling attendance")
-                    
-                    log.info(
-                        "Flow: snapshot=%s -> member_timestamp person_type=%s tid=%s",
-                        self._last_motion_img, person_type, tid,
-                    )
+                            log.info(f"AI: Logged Exit for Track {tid} (Evidence: {exit_image_path})")
+                        
+                        # Cleanup memory
+                        del self.track_data[tid]
+            
+            # Combine current detection IDs + grace-period IDs for persistence
+            persistence_ids = set(active_ids)
+            for tid, td in self.track_data.items():
+                if td.get("missing_count", 0) > 0:
+                    persistence_ids.add(tid)
+            self._active_ids = persistence_ids
 
-            self._active_ids = active_ids
-            # MOVED: self._last_motion_time = now  <-- This was blocking the motion block if someone was in frame!
-
-            # 4. Per-track processing for UI
+            # 4. Per-track results for UI/HUD
             track_results: list[TrackResult] = []
             for track in raw_tracks:
                 tid  = track.track_id
                 bbox = track.bbox
-                bx1, by1, bx2, by2 = (max(0, int(v)) for v in bbox)
-                bx2 = min(ai_w, bx2); by2 = min(ai_h, by2)
-
-                action   = ""
-                emotion  = ""
-                identity = ""
-
+                td = self.track_data.get(tid, {})
+                
+                # A. Identity & Display
+                identity = td.get("identity", "Unknown")
+                clarity = td.get("best_clarity", 0)
+                if identity == "Unknown":
+                    if not td["recognized"]:
+                        display_id = f"collecting... (Q:{clarity:.0f})"
+                    else:
+                        display_id = f"Unknown (Q:{clarity:.0f})"
+                else:
+                    display_id = f"{identity} (#{tid}) (Q:{clarity:.0f})"
+                
+                # B. Emotion (Polled from track_data updated by async task)
+                emotion = td.get("emotion", "")
+                
+                # C. Action (SlowFast Update + Rule-Based Fallback)
+                action = ""
                 if AI_TOGGLES.get("action", True):
+                    # 1. SlowFast (Deep Learning)
+                    bx1, by1, bx2, by2 = (max(0, int(v)) for v in bbox)
+                    bx2, by2 = min(ai_w, bx2), min(ai_h, by2)
+                    person_crop = ai_frame[by1:by2, bx1:bx2]
+                    if person_crop.size > 0:
+                        action = self.action_det.update(tid, person_crop)
+                    
+                    # 2. Proximity Rules (Phones/Food) - Phase 1 Addition
+                    # We check if a phone is detected within the person's bbox (upper part)
+                    if not action or action == "standing":
+                        phones = self._last_objects.get("phone", [])
+                        for pbx in phones:
+                            px1, py1, px2, py2 = pbx
+                            # Simple intersection check with person box
+                            if (px1 < bx2 and px2 > bx1 and py1 < by2 and py2 > by1):
+                                # If phone is in the upper 40% of person box
+                                if py1 < (by1 + (by2 - by1) * 0.4):
+                                    action = "📱 using phone"
+                                    break
+                
+                # 3. Geometric Fallback (Sleeping/Sitting)
+                if not action:
+                    bx1, by1, bx2, by2 = bbox
                     bw, bh = max(1, bx2 - bx1), max(1, by2 - by1)
                     ratio = bw / bh
-                    if ratio > 1.4:    geometry_label = "😴 sleeping"
-                    elif ratio > 0.85: geometry_label = "🪑 sitting"
-                    else:              geometry_label = "🧍 standing"
-
-                    person_crop    = ai_frame[by1:by2, bx1:bx2]
-                    slowfast_label = self.action_det.update(tid, person_crop) if person_crop.size > 0 else ""
-
-                    def _overlaps(ob, pb, exp=40):
-                        ox1, oy1, ox2, oy2 = ob
-                        px1, py1, px2, py2 = pb
-                        return ox1 < px2 + exp and ox2 > px1 - exp and oy1 < py2 + exp and oy2 > py1 - exp
-
-                    psb        = [bx1 * sx, by1 * sy, bx2 * sx, by2 * sy]
-                    near_food  = any(_overlaps(f, psb) for f in self._last_objects.get("food", []))
-                    near_phone = any(_overlaps(p, psb) for p in self._last_objects.get("phone", []))
-
-                    TAGS = ("⚠", "🏃", "💪", "📖", "✍", "🍽", "💬", "💃", "🎵")
-                    if near_food:    action = "🍽 eating"
-                    elif near_phone: action = "💻 working"
-                    elif slowfast_label and any(t in slowfast_label for t in TAGS): action = slowfast_label
-                    else:            action = geometry_label
-
-                if AI_TOGGLES.get("emotion", True):
-                    person_crop = ai_frame[by1:by2, bx1:bx2]
-                    if person_crop.size > 0: self._submit_emotion(person_crop, tid)
-                    emotion = self.emotion_det._cache.get(tid, "")
-
-                if AI_TOGGLES.get("person", True):
-                    cached_res = self.face_rec._cache.get(tid, {"name": "Unknown", "display_id": ""})
-                    identity = cached_res["name"]
-                    display_id = cached_res["display_id"]
-                    
-                    try:
-                        is_unknown = (identity == "" or identity == "Unknown")
-                        active_rec_tasks = sum(1 for f in self._rec_futures.values() if not f.done())
-                        if (is_unknown or (self._frame_idx % 300 == 0)) and active_rec_tasks < 2:
-                            self._submit_rec(ai_frame, bbox, tid)
-                        
-                        self.notifier.notify_person(tid, self.camera_name, action)
-                    except Exception as e:
-                        log.error("Notification error: %s", e)
+                    if ratio > 1.4:    action = "😴 sleeping"
+                    elif ratio > 0.85: action = "🪑 sitting"
+                    else:              action = "🧍 standing"
 
                 track_results.append(TrackResult(
                     track_id=tid,
                     bbox_full=scale_box(bbox, sx, sy),
                     face_bbox_full=None,
-                    emotion=emotion, action=action, identity=identity,
-                    display_id=display_id if 'display_id' in locals() else ""
+                    emotion=emotion, 
+                    action=action, 
+                    identity=identity,
+                    display_id=display_id
                 ))
 
-            # 5. Cache cleanup
-            if self._frame_idx % 120 == 0:
+            # 5. Periodic cleanup of trackers & futures
+            if self._frame_idx % 150 == 0:
                 self.emotion_det.purge(active_ids)
                 self.action_det.purge(active_ids)
                 self.face_rec.purge(active_ids)
                 for d in (self._emotion_futures, self._rec_futures):
                     for tid in list(d):
-                        if tid not in active_ids: del d[tid]
-                for tid in list(self._notified_identities):
-                    if tid not in active_ids:
-                        self._notified_identities.discard(tid)
-                for tid in list(self._last_member_log_mono):
-                    if tid not in active_ids:
-                        self._last_member_log_mono.pop(tid, None)
-                if len(self._seen_ids) > 1000:
-                    self._seen_ids = self._seen_ids.intersection(active_ids)
+                        if tid not in active_ids: d.pop(tid, None)
 
             return AIResult(motion=motion, motion_mask=mask, tracks=track_results, 
                         entries=self.entries, exits=self.exits)
@@ -531,3 +637,30 @@ class AIPipeline(threading.Thread):
         except Exception as e:
             log.error("CRITICAL AI PIPELINE ERROR: %s", e, exc_info=True)
             return AIResult(motion=False, entries=self.entries, exits=self.exits)
+
+    def reload_faces(self):
+        """Trigger face recognizer to re-scan the uploads folder."""
+        if hasattr(self, 'face_rec'):
+            log.info("AI Pipeline: Reloading face signatures...")
+            self.face_rec.load_from_folder(self.face_rec.db_path)
+
+    def _calculate_iou(self, box1, box2):
+        """Calculate Intersection over Union (IoU) of two bounding boxes."""
+        x1, y1, x2, y2 = box1
+        x3, y3, x4, y4 = box2
+        xi1 = max(x1, x3); yi1 = max(y1, y3)
+        xi2 = min(x2, x4); yi2 = min(y2, y4)
+        inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+        union_area = (x2-x1)*(y2-y1) + (x4-x3)*(y4-y3) - inter_area
+        return inter_area / union_area if union_area > 0 else 0
+
+    def _calculate_clarity(self, frame, bbox):
+        """Calculate image sharpess using Laplacian variance."""
+        try:
+            bx1, by1, bx2, by2 = (int(v) for v in bbox)
+            crop = frame[by1:by2, bx1:bx2]
+            if crop.size == 0: return 0
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            return cv2.Laplacian(gray, cv2.CV_64F).var()
+        except Exception:
+            return 0

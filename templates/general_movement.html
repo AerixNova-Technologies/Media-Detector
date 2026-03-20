@@ -241,8 +241,14 @@
         <div style="display:flex; flex-direction:column; gap:20px;">
           <div>
             <div class="details-label">Entry Snapshot</div>
-            <div class="details-img-box" style="aspect-ratio: 16/9; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
-              ${log.image_path ? `<img src="/${log.image_path}" style="width:100%; height:100%; object-fit:cover;" onclick="openImageModal('${log.image_path}', 'Entry - ${log.member_name}')">` : '<span class="no-img-text">No Entry Image Captured</span>'}
+            <div class="details-img-box" style="aspect-ratio: 16/9; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background:var(--bg);">
+              ${log.entry_image ? `<img src="${log.entry_image}" style="width:100%; height:100%; object-fit:cover;" onclick="openImageModal('${log.entry_image}', 'Entry - ${log.member_name}')">` : '<div style="height:100%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px;">No Entry Image</div>'}
+            </div>
+          </div>
+          <div>
+            <div class="details-label">Exit Snapshot</div>
+            <div class="details-img-box" style="aspect-ratio: 16/9; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background:var(--bg);">
+              ${log.exit_image && log.exit_image !== '-' ? `<img src="${log.exit_image}" style="width:100%; height:100%; object-fit:cover;" onclick="openImageModal('${log.exit_image}', 'Exit - ${log.member_name}')">` : '<div style="height:100%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px;">No Exit Image Yet</div>'}
             </div>
           </div>
         </div>
@@ -381,8 +387,8 @@
           const logJson = JSON.stringify(log).replace(/'/g, "&apos;");
           return `
             <tr class="clickable-row">
-              <td class="log-td" style="color:var(--muted); text-align:center;">
-                -
+              <td class="log-td" style="text-align:center; padding: 8px 14px;">
+                ${log.entry_image ? `<img src="${log.entry_image}" class="log-img-thumb" onclick="event.stopPropagation(); openImageModal('${log.entry_image}', 'Entry - ${log.member_name}')">` : '-'}
               </td>
               <td class="log-td" onclick='openMemberDetailsPage(${logJson})'><span style="font-family:monospace; font-weight:600; color:var(--accent);">${log.display_id || '-'}</span></td>
               <td class="log-td" onclick='openMemberDetailsPage(${logJson})'><strong>${log.member_name || '-'}</strong></td>
@@ -431,6 +437,30 @@
     window.location.href = `/api/general-movement/export?${params.toString()}`;
   }
 
+  function initSSE() {
+    console.log("Initializing SSE for General Movement...");
+    const eventSource = new EventSource('/api/sse/stream');
+
+    eventSource.onopen = () => {
+      console.log("SSE Connection opened.");
+    };
+
+    eventSource.addEventListener('member_log_update', (e) => {
+      const data = JSON.parse(e.data);
+      console.log("Movement log update received:", data);
+      
+      // Only refresh if we are on page 1 or the search is empty
+      const q = document.getElementById('log-search').value.trim();
+      if (logCurrentPage === 1 && !q) {
+        loadMemberLogs();
+      }
+    });
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Connection failed, retrying...", err);
+    };
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     flatpickr("#log-date-range", {
       mode: "range",
@@ -438,6 +468,7 @@
       onClose: () => { resetAndLoadLogs(); }
     });
     loadMemberLogs();
+    initSSE();
   });
 </script>
 {% endblock %}

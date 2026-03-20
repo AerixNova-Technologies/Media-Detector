@@ -42,6 +42,12 @@ def route_member_logs():
     return render_template("member_logs.html")
 
 
+@dashboard_bp.route("/general-movement")
+@login_required
+def route_general_movement():
+    return render_template("general_movement.html")
+
+
 @dashboard_bp.route("/reports")
 @login_required
 def route_reports():

@@ -128,6 +128,11 @@ class CameraManager:
         )
         self._render_thread.start()
 
+    def reload_faces(self) -> None:
+        """Tell the AI pipeline to reload known face signatures."""
+        if self._pipeline:
+            self._pipeline.reload_faces()
+
     def stop_stream(self) -> None:
         """Stop video capture + render thread.  AI pipeline keeps running."""
         self._active = False
@@ -165,6 +170,9 @@ class CameraManager:
                         break
                     time.sleep(0.02)
                     continue
+
+                # Cap processing to ~200 FPS to save CPU and show realistic stats
+                time.sleep(0.005)
 
                 cap_idx      += 1
                 self._fps_val = fps_ctr.tick()

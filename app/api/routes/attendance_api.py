@@ -226,6 +226,7 @@ def get_staff_count(date_str):
         conn.close()
 
 @attendance_bp.route('/member-logs', methods=['GET'])
+@attendance_bp.route('/general-movement', methods=['GET'])
 @login_required
 def get_member_logs():
     """Get member logs (staff + unknown) with pagination and filtering."""
@@ -271,10 +272,20 @@ def get_member_logs():
         if where_clauses:
             where_sql = "WHERE " + " AND ".join(where_clauses)
             
-        # Get total for pagination
-        cur.execute(f"SELECT COUNT(*) as count FROM member_timestamp m LEFT JOIN staff_profiles s ON m.staff_id = s.id {where_sql}", tuple(params))
-        total_row = cur.fetchone()
-        total = total_row['count'] if total_row else 0
+        # Get total and counts for pagination & summary
+        cur.execute(f"""
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE m.person_type = 'staff') as staff_count,
+                COUNT(*) FILTER (WHERE m.person_type != 'staff' OR m.person_type IS NULL) as unknown_count
+            FROM member_timestamp m 
+            LEFT JOIN staff_profiles s ON m.staff_id = s.id 
+            {where_sql}
+        """, tuple(params))
+        counts_row = cur.fetchone()
+        total = counts_row['total'] if counts_row else 0
+        staff_count = counts_row['staff_count'] if counts_row else 0
+        unknown_count = counts_row['unknown_count'] if counts_row else 0
         
         # Get data
         cur.execute(f"""
@@ -324,6 +335,11 @@ def get_member_logs():
         return jsonify({
             "status": "success",
             "data": results,
+            "counts": {
+                "total": total,
+                "staff": staff_count,
+                "unknown": unknown_count
+            },
             "period": period,
             "pagination": {
                 "total": total,
@@ -339,6 +355,7 @@ def get_member_logs():
         conn.close()
 
 @attendance_bp.route("/member-logs/export", methods=['GET'])
+@attendance_bp.route("/general-movement/export", methods=['GET'])
 @login_required
 def export_member_logs():
     """Export member logs as CSV."""

@@ -20,14 +20,13 @@ except ImportError:
     HAVE_POSTGRES = False
 
 log = logging.getLogger("database")
-
 class PostgresConnectionWrapper:
     """
     A wrapper for psycopg2 connection to provide a consistent interface.
-    No longer needs placeholder translation as all endpoints now use %s.
     """
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any, pool: Any = None):
         self.conn = conn
+        self.pool = pool
 
     def cursor(self, *args, **kwargs):
         # RealDictCursor is required for key-based access in routes
@@ -41,7 +40,10 @@ class PostgresConnectionWrapper:
         return self.conn.rollback()
 
     def close(self):
-        return self.conn.close()
+        if self.pool:
+            self.pool.putconn(self.conn)
+        else:
+            self.conn.close()
 
 def get_db_url() -> str:
     """Read DATABASE_URL from .env using absolute path."""
@@ -57,26 +59,35 @@ def get_db_url() -> str:
         raise ValueError("CRITICAL: DATABASE_URL not found in .env file.")
     return url
 
-def get_db_connection():
-    """Returns a PostgreSQL connection. Throws error if unavailable."""
-    url = get_db_url()
+import psycopg2.pool
 
+# Global pool instance
+_db_pool = None
+
+def get_db_pool():
+    """Lazy-initialize the connection pool."""
+    global _db_pool
+    if _db_pool is None:
+        url = get_db_url()
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        
+        # minconn=1, maxconn=20 ensures we have enough for the AI threads + Web workers
+        _db_pool = psycopg2.pool.SimpleConnectionPool(1, 40, url)
+        log.info("Database connection pool initialized.")
+    return _db_pool
+
+def get_db_connection():
+    """Returns a PostgreSQL connection from the pool."""
     if not HAVE_POSTGRES:
-        print("CRITICAL: psycopg2-binary is MISSING!")
         raise ImportError("psycopg2-binary is required for PostgreSQL support.")
 
-    # Standardize URL
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-
     try:
-        conn = psycopg2.connect(url)
-        # Log connection success to terminal
-        db_name = url.split('/')[-1].split('?')[0]
-        print(f">>> DATABASE: Connected to PostgreSQL [{db_name}]")
-        return PostgresConnectionWrapper(conn)
+        pool = get_db_pool()
+        conn = pool.getconn()
+        # Return a wrapper that handles returning to pool on close
+        return PostgresConnectionWrapper(conn, pool)
     except Exception as e:
-        print(f">>> CRITICAL: PostgreSQL Connection Failed: {e}")
         log.error("Database connection failed: %s", e)
         raise e
 
@@ -134,12 +145,13 @@ def init_db() -> None:
             print(">>> SEEDING: Default Roles")
             default_roles = [
                 ('Administrator', 'Full system access', '{"all": true}', True),
-                ('Manager', 'Management access', '{"cameras_view": true, "cameras_edit": true, "staff_view": true, "staff_edit": true}', False),
-                ('User', 'Standard access', '{"cameras_view": true, "staff_view": true}', False)
+                ('Manager', 'Management access', '{"cameras_view": true, "cameras_edit": true, "staff_view": true, "staff_edit": true, "general_movement_view": true, "member_logs_view": true, "attendance_view": true, "reports_view": true}', False),
+                ('User', 'Standard access', '{"cameras_view": true, "staff_view": true, "general_movement_view": true, "member_logs_view": true}', False)
             ]
             for r_name, r_desc, r_perms, r_sys in default_roles:
                 cur.execute(
-                    "INSERT INTO roles (name, description, permissions, is_system) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO roles (name, description, permissions, is_system) VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions WHERE roles.name = 'Administrator'",
                     (r_name, r_desc, r_perms, r_sys)
                 )
 
@@ -235,10 +247,11 @@ def init_db() -> None:
                 merged_image TEXT,
                 image_path TEXT,
                 detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                person_type VARCHAR(20),
                 staff_id INTEGER NULL REFERENCES staff_profiles(id),
                 staff_name VARCHAR(100),
-                confidence_score FLOAT
+                confidence_score FLOAT,
+                track_id INTEGER,
+                event_type VARCHAR(50)
             )
         """)
         
@@ -255,7 +268,9 @@ def init_db() -> None:
             ("person_type", "VARCHAR(20)"),
             ("staff_id", "INTEGER"),
             ("staff_name", "VARCHAR(100)"),
-            ("confidence_score", "FLOAT")
+            ("confidence_score", "FLOAT"),
+            ("track_id", "INTEGER"),
+            ("event_type", "VARCHAR(50)")
         ]
         for col, dtype in m_cols:
             try:
@@ -265,6 +280,7 @@ def init_db() -> None:
                 cur = conn.cursor()
         
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movement_detected_at ON movement_log(detected_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_movement_camera_id ON movement_log(camera_id)")
 
         # Member Timestamp Table (Restoring rich forensics)
         cur.execute("""
@@ -282,7 +298,9 @@ def init_db() -> None:
                 exit_time TIMESTAMP,
                 merged_image TEXT,
                 image_path TEXT,
-                detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                track_id INTEGER,
+                event_type VARCHAR(50)
             )
         """)
         
@@ -300,7 +318,9 @@ def init_db() -> None:
             ("person_type", "VARCHAR(20)"),
             ("staff_id", "INTEGER"),
             ("staff_name", "VARCHAR(100)"),
-            ("confidence_score", "FLOAT")
+            ("confidence_score", "FLOAT"),
+            ("track_id", "INTEGER"),
+            ("event_type", "VARCHAR(50)")
         ]
         for col, dtype in cols:
             try:
@@ -312,6 +332,7 @@ def init_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_member_timestamp_staff ON member_timestamp(staff_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_member_timestamp_entry ON member_timestamp(entry_time)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_member_timestamp_detected ON member_timestamp(detected_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_member_timestamp_camera ON member_timestamp(camera_id)")
 
         # Mandatory updates for legacy table if it already exists
         try:
