@@ -48,6 +48,15 @@
             onkeyup="filterStaff()">
         </div>
         </div>
+        <div style="display:flex; align-items:center; gap:12px; margin-right:8px;">
+          <span style="font-size:12px; font-weight:600; color: var(--muted);">Status:</span>
+          <select id="status-filter" onchange="filterStaff()" 
+            style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:8px; background: var(--surface2); color: var(--text); outline:none; font-weight:600; cursor:pointer;">
+            <option value="all">All Members</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
+          </select>
+        </div>
         <div class="view-toggles"
           style="display:flex; background: var(--surface2); padding:3px; border-radius:8px; border:1px solid var(--border);">
           <button onclick="changeView('grid')" id="btn-view-grid" class="view-btn active"
@@ -702,7 +711,19 @@
     function renderData() {
       renderMemberSummary();
       const q = document.getElementById('staff-search-input').value.toLowerCase();
-      const filtered = allStaff.filter(p => p.name.toLowerCase().includes(q) || (p.phone && p.phone.includes(q)) || (p.email && p.email.toLowerCase().includes(q)));
+      const statusFilter = document.getElementById('status-filter')?.value || 'all';
+
+      const filtered = allStaff.filter(p => {
+        const matchesQuery = p.name.toLowerCase().includes(q) || 
+                            (p.phone && p.phone.includes(q)) || 
+                            (p.email && p.email.toLowerCase().includes(q));
+        
+        const matchesStatus = statusFilter === 'all' || 
+                             (statusFilter === 'active' && (p.status || '').toLowerCase() === 'active') || 
+                             (statusFilter === 'inactive' && (p.status || '').toLowerCase() !== 'active');
+        
+        return matchesQuery && matchesStatus;
+      });
 
       const totalPages = Math.ceil(filtered.length / pageSize);
       if (currentPage > totalPages) currentPage = Math.max(1, totalPages);

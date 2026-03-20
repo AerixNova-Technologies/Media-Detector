@@ -13,12 +13,21 @@
         <p style="font-size:14px; color: var(--muted); margin:0;">Complete history of automated telegram notifications</p>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-right:8px; font-size:13px; color:var(--muted); cursor:pointer;" onclick="toggleSummaryColumn()">
-          <input type="checkbox" id="hide-summary-check" style="cursor:pointer;" onchange="toggleSummaryColumn()" />
-          <label for="hide-summary-check" style="cursor:pointer;">Hide Summary</label>
+        <!-- All / Today Segmented Control -->
+        <div class="period-toggle">
+          <button id="period-all" class="toggle-btn active" onclick="setPeriod('all')">All</button>
+          <button id="period-today" class="toggle-btn" onclick="setPeriod('today')">Today</button>
         </div>
+        <button id="toggle-telegram-summary-btn" class="secondary-btn" onclick="toggleTelegramSummary()"><span>⌃</span> Hide Summary</button>
         <button class="secondary-btn" onclick="loadAlerts()"><span>🔄</span> Refresh</button>
       </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div id="telegram-summary" style="display:grid; grid-template-columns:repeat(3,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
+      <div class="log-card"><div class="log-label">Total Alerts</div><div class="log-value" id="count-total">0</div></div>
+      <div class="log-card"><div class="log-label">Successful (Sent)</div><div class="log-value" id="count-sent">0</div></div>
+      <div class="log-card"><div class="log-label">Failed</div><div class="log-value" id="count-failed">0</div></div>
     </div>
 
     <!-- Filters -->
@@ -33,6 +42,7 @@
           <input id="alert-date-range" type="text" class="log-input" readonly placeholder="Pick a date range" />
         </div>
       </div>
+      <button class="secondary-btn" onclick="exportTelegramLogs()" style="white-space:nowrap; padding: 9px 16px;"><span>📥</span> Export Logs</button>
     </div>
 
     <!-- Alerts Table -->
@@ -47,11 +57,11 @@
             <th class="log-th">Status</th>
             <th class="log-th">Chat ID</th>
             <th class="log-th">Time</th>
-            <th class="log-th" style="width:60px; text-align:center;">Details</th>
+            <th class="log-th" style="width:60px; text-align:center;">Actions</th>
           </tr>
         </thead>
         <tbody id="alerts-table-body">
-          <tr><td colspan="7" class="log-empty">Initializing alerts...</td></tr>
+          <tr><td colspan="8" class="log-empty">Initializing alerts...</td></tr>
         </tbody>
       </table>
     </div>
@@ -89,9 +99,22 @@
   .log-td { padding: 12px 14px; font-size: 13px; color: var(--text); border-bottom:1px solid var(--border); }
   .log-empty { padding: 30px; text-align:center; color: var(--muted); font-size: 13px; }
   
+  .log-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .log-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .log-value { font-size: 24px; color: var(--text); font-weight: 800; line-height: 1; }
+
+  /* Segmented Control */
+  .period-toggle { display: flex; background: var(--surface2); padding: 4px; border-radius: 10px; border: 1px solid var(--border); }
+  .toggle-btn { border: none; background: transparent; padding: 6px 16px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-radius: 7px; transition: all 0.2s; }
+  .toggle-btn.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+
   .badge-status { display:inline-block; font-size: 11px; font-weight:700; border-radius: 6px; padding: 4px 10px; text-transform: uppercase; }
   .status-sent { background: var(--success-bg); color: var(--green); }
   .status-failed { background: #fee2e2; color: #ef4444; }
+
+  /* 3-dot Menu */
+  .actions-btn { background:transparent; border:none; color:var(--muted); font-size:18px; padding:4px 8px; cursor:pointer; border-radius:6px; transition: all 0.2s; }
+  .actions-btn:hover { background: var(--bg); color: var(--text); }
 
   .clickable-row { transition: background 0.2s; cursor:pointer; }
   .clickable-row:hover { background: var(--surface2); }
@@ -111,10 +134,41 @@
   let alertSearchTimer = null;
   let alertCurrentPage = 1;
   let alertPageSize = 20;
+  let alertPeriod = 'all';
+  let telegramSummaryVisible = true;
+
+  function setPeriod(p) {
+    alertPeriod = p;
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`period-${p}`).classList.add('active');
+    
+    // Disable date picker if today is active
+    const rangeCont = document.getElementById('date-range-container');
+    const rangeInput = document.getElementById('alert-date-range');
+    if (p === 'today') {
+      rangeCont.style.opacity = '0.5';
+      rangeCont.style.pointerEvents = 'none';
+      const today = new Date().toISOString().split('T')[0];
+      if (rangeInput) rangeInput.value = today;
+      if (rangeInput?._flatpickr) rangeInput._flatpickr.setDate(today);
+    } else {
+      rangeCont.style.opacity = '1';
+      rangeCont.style.pointerEvents = 'auto';
+      if (rangeInput) rangeInput.value = '';
+      if (rangeInput?._flatpickr) rangeInput._flatpickr.clear();
+    }
+    
+    resetAndLoad();
+  }
+
+  function resetAndLoad() {
+    alertCurrentPage = 1;
+    loadAlerts();
+  }
 
   function debouncedLoadAlerts() {
     clearTimeout(alertSearchTimer);
-    alertSearchTimer = setTimeout(() => { alertCurrentPage = 1; loadAlerts(); }, 300);
+    alertSearchTimer = setTimeout(() => { resetAndLoad(); }, 300);
   }
 
   function openMessageModal(text) {
@@ -126,10 +180,19 @@
     document.getElementById('details-modal').classList.remove('active');
   }
 
+
+  function toggleTelegramSummary() {
+    telegramSummaryVisible = !telegramSummaryVisible;
+    const section = document.getElementById('telegram-summary');
+    const btn = document.getElementById('toggle-telegram-summary-btn');
+    section.style.display = telegramSummaryVisible ? 'grid' : 'none';
+    btn.innerHTML = telegramSummaryVisible ? '<span>⌃</span> Hide Summary' : '<span>⌄</span> Show Summary';
+  }
+
   function toggleSummaryColumn() {
-    const isChecked = document.getElementById('hide-summary-check').checked;
+    // Keep this function but hide summary column if needed via JS elsewhere or legacy
     const cols = document.querySelectorAll('.summary-col');
-    cols.forEach(c => c.style.display = isChecked ? 'none' : 'table-cell');
+    // For now we don't need a checkbox for this if we use the top summary cards
   }
 
   function getDateRange() {
@@ -183,6 +246,18 @@
     `;
   }
 
+  function exportTelegramLogs() {
+    const q = document.getElementById('alert-search').value.trim();
+    const { from, to } = getDateRange();
+    
+    const params = new URLSearchParams({ period: alertPeriod });
+    if (q) params.append('q', q);
+    if (from) params.append('date_from', from + ' 00:00:00');
+    if (to) params.append('date_to', to + ' 23:59:59');
+    
+    window.location.href = `/api/telegram-alerts/export?${params.toString()}`;
+  }
+
   function changePage(page) {
     alertCurrentPage = page;
     loadAlerts();
@@ -194,14 +269,15 @@
     
     const params = new URLSearchParams({
       page: alertCurrentPage,
-      page_size: alertPageSize
+      page_size: alertPageSize,
+      period: alertPeriod
     });
     if (q) params.append('q', q);
     if (from) params.append('date_from', from + ' 00:00:00');
     if (to) params.append('date_to', to + ' 23:59:59');
 
     const tbody = document.getElementById('alerts-table-body');
-    tbody.innerHTML = '<tr><td colspan="7" class="log-empty">Loading records...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="log-empty">Loading records...</td></tr>';
 
     try {
       const res = await fetch(`/api/telegram-alerts?${params.toString()}`);
@@ -214,39 +290,44 @@
       const pagination = result.pagination;
 
       if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="log-empty">No telegram alerts found for the selected filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="log-empty">No telegram alerts found for the selected filters.</td></tr>';
       } else {
-        const hideSummary = document.getElementById('hide-summary-check').checked;
         tbody.innerHTML = data.map(alert => {
           const msgSnippet = alert.message_text.length > 50 ? alert.message_text.substring(0, 50) + '...' : alert.message_text;
-          const statusClass = alert.status === 'sent' ? 'status-sent' : 'status-failed';
-          const summaryDisplay = hideSummary ? 'none' : 'table-cell';
+          const statusLower = (alert.status || '').toLowerCase();
+          const statusClass = statusLower === 'sent' ? 'status-sent' : 'status-failed';
+          const alertJson = JSON.stringify(alert).replace(/'/g, "&apos;");
           return `
-            <tr class="clickable-row" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
-              <td class="log-td"><span style="font-family:monospace; font-weight:600; color:var(--accent);">#${alert.track_id || '-'}</span></td>
-              <td class="log-td">${alert.camera_name || '-'}</td>
-              <td class="log-td">${alert.action || '-'}</td>
-              <td class="log-td summary-col" style="font-size:12px; color:var(--muted); display: ${summaryDisplay};">${msgSnippet}</td>
-              <td class="log-td">
+            <tr class="clickable-row">
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)"><span style="font-family:monospace; font-weight:600; color:var(--accent);">#${alert.track_id || '-'}</span></td>
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${alert.camera_name || '-'}</td>
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${alert.action || '-'}</td>
+              <td class="log-td summary-col" style="font-size:12px; color:var(--muted);" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${msgSnippet}</td>
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
                 <span class="badge-status ${statusClass}">${alert.status}</span>
               </td>
-              <td class="log-td" style="font-size:11px; color:var(--muted); max-width:150px; overflow:hidden; text-overflow:ellipsis;">${alert.chat_id || '-'}</td>
-              <td class="log-td" style="white-space:nowrap;">
+              <td class="log-td" style="font-size:11px; color:var(--muted); max-width:150px; overflow:hidden; text-overflow:ellipsis;" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${alert.chat_id || '-'}</td>
+              <td class="log-td" style="white-space:nowrap;" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
                 <div style="font-weight:500;">${alert.timestamp.split(' ')[0]}</div>
                 <div style="font-size:11px; color:var(--muted); margin-top:2px;">${alert.timestamp.split(' ')[1]}</div>
               </td>
               <td class="log-td" style="text-align:center;">
-                <button class="secondary-btn" style="padding:4px 8px;">View</button>
+                <button class="actions-btn" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">⋮</button>
               </td>
             </tr>
           `;
         }).join('');
       }
 
+      // Update counters
+      document.getElementById('count-total').textContent = result.counts ? result.counts.total : pagination.total;
+      document.getElementById('count-sent').textContent = result.counts ? result.counts.sent : '-';
+      document.getElementById('count-failed').textContent = result.counts ? result.counts.failed : '-';
+
       renderPagination(pagination);
 
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="7" class="log-empty" style="color:#ef4444;">Error: ${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="log-empty" style="color:#ef4444;">Error: ${e.message}</td></tr>`;
     }
   }
 

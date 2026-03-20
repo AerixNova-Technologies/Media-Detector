@@ -437,6 +437,7 @@ def get_telegram_alerts():
     limit = int(request.args.get('limit', request.args.get('page_size', 20)))
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
+    period = request.args.get('period', 'all')
     offset = (page - 1) * limit
     q = request.args.get('q')
 
@@ -446,12 +447,16 @@ def get_telegram_alerts():
         where_clauses = []
         params = []
         
-        if date_from:
-            where_clauses.append("timestamp >= %s")
-            params.append(date_from)
-        if date_to:
-            where_clauses.append("timestamp <= %s")
-            params.append(date_to)
+        if period == 'today':
+            where_clauses.append("timestamp::date = %s")
+            params.append(datetime.now().date())
+        else:
+            if date_from:
+                where_clauses.append("timestamp >= %s")
+                params.append(date_from)
+            if date_to:
+                where_clauses.append("timestamp <= %s")
+                params.append(date_to)
         if q:
             where_clauses.append("(message_text ILIKE %s OR camera_name ILIKE %s OR action ILIKE %s)")
             params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
@@ -462,6 +467,13 @@ def get_telegram_alerts():
             
         cur.execute(f"SELECT COUNT(*) as count FROM telegram_alerts {where_sql}", tuple(params))
         total = cur.fetchone()['count']
+
+        # Get summary counts for cards (handle empty WHERE)
+        base_filter = where_sql if where_sql else "WHERE TRUE"
+        cur.execute(f"SELECT COUNT(*) as count FROM telegram_alerts {base_filter} AND status ILIKE 'sent'", tuple(params))
+        sent_count = cur.fetchone()['count']
+        cur.execute(f"SELECT COUNT(*) as count FROM telegram_alerts {base_filter} AND status NOT ILIKE 'sent'", tuple(params))
+        failed_count = cur.fetchone()['count']
         
         cur.execute(f"""
             SELECT id, track_id, camera_name, action, message_text, status, timestamp, chat_id
@@ -488,8 +500,15 @@ def get_telegram_alerts():
         return jsonify({
             "status": "success",
             "data": results,
+            "counts": {
+                "total": total,
+                "sent": sent_count,
+                "failed": failed_count
+            },
             "pagination": {
                 "total": total,
+                "sent_count": sent_count,
+                "failed_count": failed_count,
                 "page": page,
                 "limit": limit,
                 "pages": (total + limit - 1) // limit if limit > 0 else 0
@@ -500,3 +519,117 @@ def get_telegram_alerts():
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         conn.close()
+
+@attendance_bp.route("/telegram-alerts/export", methods=['GET'])
+@login_required
+def export_telegram_alerts():
+    """Export telegram alerts as CSV."""
+    period = request.args.get('period', 'all')
+    q = request.args.get('q')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        where_clauses = []
+        params = []
+        
+        if period == 'today':
+            where_clauses.append("timestamp::date = %s")
+            params.append(datetime.now().date())
+        else:
+            if date_from:
+                where_clauses.append("timestamp >= %s")
+                params.append(date_from)
+            if date_to:
+                where_clauses.append("timestamp <= %s")
+                params.append(date_to)
+        if q:
+            where_clauses.append("(message_text ILIKE %s OR camera_name ILIKE %s OR action ILIKE %s)")
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
+            
+        where_sql = ""
+        if where_clauses:
+            where_sql = "WHERE " + " AND ".join(where_clauses)
+            
+        cur.execute(f"""
+            SELECT id, track_id, camera_name, action, message_text, status, timestamp, chat_id
+            FROM telegram_alerts
+            {where_sql}
+            ORDER BY timestamp DESC
+        """, tuple(params))
+        
+        rows = cur.fetchall()
+        
+        # Generate XLSX for professional Excel experience
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Telegram Alerts"
+            
+            # Header with bold font
+            headers_list = ['Time', 'Track ID', 'Camera', 'Action', 'Status', 'Chat ID', 'Message']
+            ws.append(headers_list)
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                
+            for r in rows:
+                ts_str = r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if r['timestamp'] else ''
+                ws.append([
+                    ts_str,
+                    r['track_id'] or '',
+                    r['camera_name'] or '',
+                    r['action'] or '',
+                    r['status'] or '',
+                    r['chat_id'] or '',
+                    r['message_text'] or ''
+                ])
+                
+            # Basic column width adjustment
+            for col in ws.columns:
+                max_length = 0
+                column_letter = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except: pass
+                ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+
+            output = io.BytesIO()
+            wb.save(output)
+            output.seek(0)
+            
+            filename = f"telegram_alerts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return Response(
+                output.read(),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-disposition": f"attachment; filename={filename}"}
+            )
+        except ImportError:
+            log.warning("openpyxl not found, falling back to CSV with BOM")
+            # Fallback to CSV if openpyxl fails for some reason
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['Time', 'Track ID', 'Camera', 'Action', 'Status', 'Chat ID', 'Message'])
+            for r in rows:
+                ts_str = r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if r['timestamp'] else ''
+                writer.writerow([ts_str, r['track_id'] or '', r['camera_name'] or '', r['action'] or '', r['status'] or '', r['chat_id'] or '', r['message_text'] or ''])
+            
+            csv_data = output.getvalue()
+            return Response(
+                csv_data.encode('utf-8-sig'),
+                mimetype="text/csv",
+                headers={"Content-disposition": f"attachment; filename=telegram_alerts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx.csv"}
+            )
+            
+    except Exception as e:
+        log.error(f"Error exporting telegram alerts: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        conn.close()
+

@@ -30,6 +30,18 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 4px;
+}
+
+.nav-tabs::-webkit-scrollbar {
+  width: 4px;
+}
+
+.nav-tabs::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
 }
 
 .nav-tab {
@@ -80,6 +92,7 @@
   color: var(--muted);
   margin-left: 12px;
 }
+
 
 /* Cards */
 .settings-card {

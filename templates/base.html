@@ -158,9 +158,48 @@
         opacity: 0.4;
       }
 
-      .app-layout.sidebar-collapsed .nav-arrow,
-      .app-layout.sidebar-collapsed .nav-sub {
+      .app-layout.sidebar-collapsed .nav-arrow {
         display: none !important;
+      }
+
+      /* Floating Submenu in Collapsed Mode */
+      .app-layout.sidebar-collapsed .nav-group {
+        position: relative;
+      }
+
+      .app-layout.sidebar-collapsed .nav-group:hover .nav-sub {
+        display: flex !important;
+        position: fixed;
+        left: 64px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 8px;
+        min-width: 190px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        z-index: 9999;
+        flex-direction: column;
+        padding-left: 8px !important;
+      }
+
+      .nav-sub-header {
+        display: none;
+        padding: 8px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 6px;
+        letter-spacing: 0.05em;
+      }
+
+      .app-layout.sidebar-collapsed .nav-sub-header {
+        display: block;
+      }
+
+      .app-layout.sidebar-collapsed .nav-sub-item {
+        padding: 8px 14px !important;
       }
     </style>
     <!-- ─── Global Left Sidebar ─── -->
@@ -214,6 +253,7 @@
             <span class="nav-arrow">›</span>
           </div>
           <div class="nav-sub">
+            <div class="nav-sub-header">Telegram</div>
             <a href="/telegram" class="nav-sub-item {{ 'active' if active_page == 'telegram' else '' }}">
               <span class="nav-dot"></span> Bot Settings
             </a>
@@ -235,7 +275,6 @@
         {% endif %}
       </div>
 
-      <div style="flex-grow: 1;"></div>
 
       <div class="sidebar-footer" style="padding-top: 20px; border-top: 1px solid var(--border); margin-top: auto;">
         <div style="display: flex; align-items: center; gap: 12px; position: relative; padding: 4px;">
@@ -618,6 +657,18 @@
           const isCollapsed = layout.classList.toggle('sidebar-collapsed');
           localStorage.setItem('sidebar-collapsed', isCollapsed);
         }
+
+        // Mini Sidebar Popover Positioning
+        document.addEventListener('mouseover', (e) => {
+          const group = e.target.closest('.nav-group');
+          if (group && document.querySelector('.app-layout').classList.contains('sidebar-collapsed')) {
+            const sub = group.querySelector('.nav-sub');
+            if (sub) {
+              const rect = group.getBoundingClientRect();
+              sub.style.top = rect.top + 'px';
+            }
+          }
+        });
       </script>
 </body>
 
