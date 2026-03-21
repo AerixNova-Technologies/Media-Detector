@@ -574,9 +574,17 @@
 
           const cards = document.getElementById('person-cards');
           if (!d.tracks || d.tracks.length === 0) {
+            cards.classList.remove('fade-in');
             cards.innerHTML = '<div class="no-persons"><div class="no-icon">🧍</div>No persons detected</div>';
             return;
           }
+          
+          if (cards.innerHTML.length < 100 || d.tracks.length > 0) {
+              cards.classList.remove('fade-in');
+              void cards.offsetWidth;
+              cards.classList.add('fade-in');
+          }
+
           cards.innerHTML = d.tracks.map(t => {
             const isAlert = t.action && (t.action.includes('âš ') || t.action.includes('ðŸƒ'));
             const identityStr = (t.identity && t.identity !== "Unknown") ? `${t.identity}${t.staff_id ? ' ('+t.staff_id+')' : ''}` : "Person #" + t.id;

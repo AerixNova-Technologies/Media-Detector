@@ -276,6 +276,9 @@ async function loadDashboard() {
         // Live Presence Rendering
         const presenceList = document.getElementById('presence-list');
         if (data.daily_presence && data.daily_presence.length > 0) {
+            presenceList.classList.remove('fade-in');
+            void presenceList.offsetWidth; // trigger reflow
+            presenceList.classList.add('fade-in');
             presenceList.innerHTML = data.daily_presence.map(p => {
                 const isPresent = p.status === 'IN';
                 return `

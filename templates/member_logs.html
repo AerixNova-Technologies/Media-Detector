@@ -78,14 +78,14 @@
 </div>
 
 <!-- Details Modal -->
-<div id="details-modal" class="modal-overlay" onclick="closeDetailsModal()">
-  <div class="modal-content-details" onclick="event.stopPropagation()">
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:20px; border-bottom:1px solid var(--border);">
-      <h2 style="margin:0; font-size:18px;">Detection Details</h2>
+<div id="details-modal" class="modal-overlay">
+  <div class="modal-content" style="max-width: 800px; width: 90%;">
+    <div class="modal-header">
+      <h3 id="modal-title" style="margin:0; font-size:18px;">Detection Details</h3>
       <button class="close-btn" onclick="closeDetailsModal()">✕</button>
     </div>
-    <div id="details-content" style="padding:24px;">
-      <!-- Content injected by JS -->
+    <div id="details-content" class="modal-body">
+      <!-- Content populated by JS -->
     </div>
   </div>
 </div>
@@ -131,19 +131,36 @@
   .actions-btn:hover { background: var(--bg); color: var(--text); }
 
   /* Modal Overlay */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 40px; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 20px; }
   .modal-overlay.active { display: flex; }
   .modal-content-img { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg); border: 1px solid var(--border); overflow: hidden; position: relative; max-width: 90vw; max-height: 90vh; }
   .modal-content-img img { max-width: 100%; max-height: calc(90vh - 50px); display: block; }
-  .modal-content-details { background: var(--surface); border-radius: 16px; width: 500px; max-width: 95vw; box-shadow: var(--shadow-lg); }
+  
+  .modal-content { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg); border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-body { padding: 24px; overflow-y: auto; }
+  
   .close-overlay, .close-btn { background: none; border: none; font-size: 20px; color: var(--muted); cursor: pointer; transition: color 0.2s; }
   .close-btn:hover { color: var(--text); }
   .close-overlay { position: absolute; top: 15px; right: 15px; background: rgba(0,0,0,0.5); color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 5; }
 
+  .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .details-info { display: flex; flex-direction: column; gap: 16px; }
+  .details-label { font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+  .details-value { font-size: 14px; color: var(--text); font-weight: 500; }
+  .details-img-box { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface2); aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; }
+  .details-img-box img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+  .no-img-text { font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 1100px) {
+    .log-filter-row { flex-wrap: wrap; }
+    .log-search-wrap { max-width: none; width: 100%; }
+  }
   @media (max-width: 768px) {
     .log-filter-row { gap:12px; }
     .log-filter-group { width:100%; }
     .log-range-wrap { width:100%; }
+    .details-grid { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -173,9 +190,13 @@
     if (p === 'today') {
       rangeCont.style.opacity = '0.5';
       rangeCont.style.pointerEvents = 'none';
-      const today = new Date().toISOString().split('T')[0];
-      if (rangeInput) rangeInput.value = today;
-      if (rangeInput?._flatpickr) rangeInput._flatpickr.setDate(today);
+
+      // Use local date (YYYY-MM-DD)
+      const now = new Date();
+      const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      
+      if (rangeInput) rangeInput.value = localToday;
+      if (rangeInput?._flatpickr) rangeInput._flatpickr.setDate(localToday);
     } else {
       rangeCont.style.opacity = '1';
       rangeCont.style.pointerEvents = 'auto';
@@ -200,49 +221,67 @@
     loadMemberLogs();
   }
 
+  function fmtDateTime(value) {
+    if (!value || value === '-') return '-';
+    // Handle our standard format: YYYY-MM-DD HH:MM:SS
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return value;
+    // Handle raw ISO format from API
+    if (value.includes('T')) {
+      return value.replace('T', ' ').split('.')[0].split('+')[0].split('Z')[0];
+    }
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString();
+  }
+
+  function calcDuration(start, end) {
+    if (!start || !end || start === '-' || end === '-') return '-';
+    const s = new Date(start);
+    const e = new Date(end);
+    const diff = e - s;
+    if (diff < 0 || Number.isNaN(diff)) return '-';
+    const mins = Math.floor(diff / 60000);
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`;
+  }
+
   function openDetails(log) {
     const modal = document.getElementById('details-modal');
     const content = document.getElementById('details-content');
     
-    // Calculate duration
-    let duration = '-';
-    if (log.entry_time !== '-' && log.exit_time !== '-') {
-      try {
-        const s = new Date(log.entry_time);
-        const e = new Date(log.exit_time);
-        const diff = e - s;
-        if (diff > 0) {
-          const mins = Math.floor(diff / 60000);
-          const hrs = Math.floor(mins / 60);
-          const remMins = mins % 60;
-          duration = hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`;
-        }
-      } catch(e) {}
-    }
+    const status = (!log.exit_time || log.exit_time === '-') ? 'IN' : 'OUT';
+    const duration = calcDuration(log.entry_time, log.exit_time);
 
     content.innerHTML = `
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-        <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="details-grid">
+        <div class="details-info">
           <div><div class="details-label">Member Name</div><div class="details-value" style="font-size:18px; font-weight:700;">${log.member_name || 'Unknown'}</div></div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
             <div><div class="details-label">Member ID</div><div class="details-value">${log.display_id || '-'}</div></div>
-            <div><div class="details-label">Member Type</div><span class="badge-type ${log.person_type === 'STAFF' ? 'badge-staff' : 'badge-unknown'}">${log.person_type}</span></div>
+            <div><div class="details-label">Phone</div><div class="details-value">${log.phone || '-'}</div></div>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <div><div class="details-label">Entry Time</div><div class="details-value">${log.entry_time}</div></div>
-            <div><div class="details-label">Exit Time</div><div class="details-value">${log.exit_time}</div></div>
+            <div><div class="details-label">In Time</div><div class="details-value">${fmtDateTime(log.entry_time)}</div></div>
+            <div><div class="details-label">Out Time</div><div class="details-value">${fmtDateTime(log.exit_time)}</div></div>
           </div>
-          <div><div class="details-label">Stay Duration</div><div class="details-value" style="color:var(--accent); font-weight:700;">${duration}</div></div>
-          <div style="margin-top:24px; display:flex; gap:12px;">
-            <button class="primary-btn" style="flex:1;" onclick="openImageModal('${log.image_url}', '${log.member_name}')">Full Snapshot</button>
-            <button class="secondary-btn" style="flex:1;" onclick="closeDetailsModal()">Close</button>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div><div class="details-label">Stay Duration</div><div class="details-value" style="color:var(--accent); font-weight:700;">${duration}</div></div>
+            <div><div class="details-label">Current Status</div><span class="badge-status ${status === 'IN' ? 'badge-in' : 'badge-out'}" style="display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:4px 10px; ${status === 'IN' ? 'background:var(--success-bg); color:var(--green);' : 'background:var(--surface2); color:var(--muted);'}">${status}</span></div>
           </div>
+          <div><div class="details-label">Email</div><div class="details-value">${log.email || '-'}</div></div>
         </div>
         <div style="display:flex; flex-direction:column; gap:20px;">
           <div>
-            <div class="details-label">Entry Snapshot</div>
-            <div class="details-img-box" style="aspect-ratio: 16/9; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
-              ${log.image_url ? `<img src="${log.image_url}" style="width:100%; height:100%; object-fit:cover;" onclick="openImageModal('${log.image_url}', 'Entry - ${log.member_name}')">` : '<span class="no-img-text">No Entry Image Captured</span>'}
+            <div class="details-label">Entry Verification Snapshot</div>
+            <div class="details-img-box">
+              ${log.image_url ? `<img src="${log.image_url}" alt="Entry Image" onclick="openImageModal('${log.image_url}', 'Entry - ${log.member_name}')">` : '<span class="no-img-text">No Entry Image Captured</span>'}
+            </div>
+          </div>
+          <div>
+            <div class="details-label">Exit Verification Snapshot</div>
+            <div class="details-img-box">
+              ${log.exit_image && log.exit_image !== '-' ? `<img src="${log.exit_image}" alt="Exit Image" onclick="openImageModal('${log.exit_image}', 'Exit - ${log.member_name}')">` : '<span class="no-img-text">No Exit Image Captured</span>'}
             </div>
           </div>
         </div>
@@ -252,15 +291,8 @@
   }
 
   function openMemberDetailsPage(log) {
-    const isStaff = (log?.person_type || '').toUpperCase() === 'STAFF';
-    if (!isStaff || !log?.staff_id) {
-      openDetails(log);
-      return;
-    }
-    const params = new URLSearchParams();
-    params.set('member_id', String(log.member_id));
-    if (log.member_name && log.member_name !== '-') params.set('member_name', log.member_name);
-    window.location.href = `/settings/staff?${params.toString()}`;
+    // Show modal directly for a better "details" experience as requested
+    openDetails(log);
   }
 
   function closeDetailsModal() {
@@ -337,6 +369,23 @@
     loadMemberLogs();
   }
 
+  function renderLogSkeletons() {
+    const tbody = document.getElementById('logs-table-body');
+    const cols = 7;
+    const rows = 8;
+    let html = '';
+    for (let i = 0; i < rows; i++) {
+      html += `<tr class="skeleton-row">`;
+      for (let j = 0; j < cols; j++) {
+        const width = j === 0 ? '48px' : (Math.random() * 40 + 40) + '%';
+        html += `<td><div class="skeleton-box" style="width: ${width}; ${j===0?'height:32px;':''}"></div></td>`;
+      }
+      html += `</tr>`;
+    }
+    tbody.innerHTML = html;
+    tbody.classList.add('loading-state');
+  }
+
   async function loadMemberLogs() {
     const type = document.getElementById('log-type-filter').value;
     const q = document.getElementById('log-search').value.trim();
@@ -353,7 +402,11 @@
     if (to) params.append('date_to', to + ' 23:59:59');
 
     const tbody = document.getElementById('logs-table-body');
-    tbody.innerHTML = '<tr><td colspan="7" class="log-empty">Loading records...</td></tr>';
+    if (tbody.children.length === 0 || tbody.querySelector('.log-empty')) {
+      renderLogSkeletons();
+    } else {
+      tbody.classList.add('loading-state');
+    }
 
     try {
       const res = await fetch(`/api/member-logs?${params.toString()}`);
@@ -374,6 +427,11 @@
 
       const logs = result.data;
       const pagination = result.pagination;
+
+      tbody.classList.remove('loading-state');
+      tbody.classList.remove('fade-in');
+      void tbody.offsetWidth; // trigger reflow
+      tbody.classList.add('fade-in');
 
       if (logs.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="log-empty">No detection logs found for the selected filters.</td></tr>';
@@ -415,6 +473,7 @@
       renderPagination(pagination);
 
     } catch (e) {
+      tbody.classList.remove('loading-state');
       tbody.innerHTML = `<tr><td colspan="7" class="log-empty" style="color:#ef4444;">Error: ${e.message}</td></tr>`;
     }
   }

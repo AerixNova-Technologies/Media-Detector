@@ -658,11 +658,13 @@
       rangeWrap.style.opacity = '0.5';
       rangeWrap.style.pointerEvents = 'none';
 
-      // Show today's date in the input for clarity
-      const today = new Date().toISOString().split('T')[0];
-      if (rangeInput) rangeInput.value = today;
+      // Use local date (YYYY-MM-DD)
+      const now = new Date();
+      const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      
+      if (rangeInput) rangeInput.value = localToday;
       if (rangeInput?._flatpickr) {
-        rangeInput._flatpickr.setDate(today);
+        rangeInput._flatpickr.setDate(localToday);
       }
     } else {
       rangeWrap.style.opacity = '1';
@@ -901,6 +903,23 @@
     }).join('');
   }
 
+  function renderAttendanceSkeletons() {
+    const tbody = document.getElementById('attendance-table-body');
+    const cols = 9;
+    const rows = 8;
+    let html = '';
+    for (let i = 0; i < rows; i++) {
+      html += `<tr class="skeleton-row">`;
+      for (let j = 0; j < cols; j++) {
+        const width = (Math.random() * 40 + 40) + '%';
+        html += `<td><div class="skeleton-box" style="width: ${width};"></div></td>`;
+      }
+      html += `</tr>`;
+    }
+    tbody.innerHTML = html;
+    tbody.classList.add('loading-state');
+  }
+
   async function loadAttendance() {
     const { dateFrom, dateTo } = getDateRangeValues();
     const q = document.getElementById('att-search').value.trim();
@@ -914,7 +933,11 @@
     params.set('page_size', String(attPageSize));
 
     const tbody = document.getElementById('attendance-table-body');
-    tbody.innerHTML = '<tr><td colspan="9" class="att-empty">Loading attendance records...</td></tr>';
+    if (tbody.children.length === 0 || tbody.querySelector('.att-empty')) {
+      renderAttendanceSkeletons();
+    } else {
+      tbody.classList.add('loading-state');
+    }
 
     try {
       const res = await fetch('/api/attendance/records?' + params.toString());
@@ -922,10 +945,17 @@
       if (!data.success) {
         throw new Error(data.error || 'Failed to load attendance');
       }
+
+      tbody.classList.remove('loading-state');
+      tbody.classList.remove('fade-in');
+      void tbody.offsetWidth; // trigger reflow
+      tbody.classList.add('fade-in');
+
       setSummary(data.summary || {});
       renderAttendanceRows(data.records || []);
       renderAttPagination((data.pagination && data.pagination.total_records) || 0);
     } catch (e) {
+      tbody.classList.remove('loading-state');
       tbody.innerHTML = `<tr><td colspan="9" class="att-empty" style="color: var(--red);">Failed to load attendance: ${e.message}</td></tr>`;
       setSummary({ total_records: 0, total_in: 0, total_out: 0, today_total: 0 });
       renderAttPagination(0);

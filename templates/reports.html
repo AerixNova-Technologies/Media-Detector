@@ -165,6 +165,10 @@
     const ringIn = clamp(inPct, 0, 100);
     const ringOut = clamp(outPct, 0, 100);
 
+    output.classList.remove('fade-in');
+    void output.offsetWidth; // trigger reflow
+    output.classList.add('fade-in');
+
     output.innerHTML = `
       <div style="text-align:left;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
