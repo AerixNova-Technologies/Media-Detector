@@ -450,7 +450,7 @@ def get_telegram_alerts():
     try:
         cur = conn.cursor()
         where_clauses = []
-        params = []
+        params: list[Any] = []
         
         if period == 'today':
             where_clauses.append("timestamp::date = %s")
@@ -538,7 +538,7 @@ def export_telegram_alerts():
     try:
         cur = conn.cursor()
         where_clauses = []
-        params = []
+        params: list[Any] = []
         
         if period == 'today':
             where_clauses.append("timestamp::date = %s")
@@ -596,14 +596,15 @@ def export_telegram_alerts():
                 
             # Basic column width adjustment
             for col in ws.columns:
-                max_length = 0
+                max_length: int = 0
                 column_letter = col[0].column_letter
                 for cell in col:
                     try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
+                        val = str(cell.value) if cell.value is not None else ""
+                        if len(val) > max_length:
+                            max_length = len(val)
                     except: pass
-                ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = min(float(max_length) + 2.0, 50.0)
 
             output = io.BytesIO()
             wb.save(output)

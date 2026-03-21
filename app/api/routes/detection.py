@@ -98,7 +98,8 @@ def api_dashboard_info():
         db_status = f"error: {str(e)}"
 
     user_email = session.get("user")
-    cams = get_all_cameras(user_email=user_email)
+    force_refresh = request.args.get("refresh", "0") == "1"
+    cams = get_all_cameras(force=force_refresh, user_email=user_email)
     
     online_count  = 0
     for c in cams:
@@ -224,7 +225,8 @@ def api_dashboard_v3():
 
     # 5. Camera counts
     user_email = session.get("user")
-    cams = get_all_cameras(user_email=user_email)
+    force_refresh = request.args.get("refresh", "0") == "1"
+    cams = get_all_cameras(force=force_refresh, user_email=user_email)
     for c in cams:
         st = c.get("status", "").lower()
         if "online" in st or "🟢" in st:

@@ -1071,13 +1071,13 @@
         // ─── Load camera list ──────────────────────────────────────────────
         async function loadCameras() {
           const list = document.getElementById('camera-list');
-          list.innerHTML = '<div class="loading-cameras"><div class="spinner"></div>Loading camerasâ€¦</div>';
+          list.innerHTML = '<div class="loading-cameras"><div class="spinner"></div>Loading cameras…</div>';
           try {
-            const res = await fetch('/api/cameras');
+            const res = await fetch('/api/cameras?refresh=1&t=' + Date.now());
             const cams = await res.json();
             renderCameras(cams);
           } catch (e) {
-            list.innerHTML = '<div class="loading-cameras">âš  Could not load cameras</div>';
+            list.innerHTML = '<div class="loading-cameras">⚠️ Could not load cameras</div>';
           }
         }
 

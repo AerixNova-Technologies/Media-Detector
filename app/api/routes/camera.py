@@ -45,7 +45,7 @@ APP_SECRET = os.environ.get("IMOU_APP_SECRET", "")
 # ── Camera cache ─────────────────────────────────────────────────────────────
 _camera_cache: list[dict] = []
 _camera_cache_ts: float   = 0.0
-_camera_lock = __import__("threading").Lock()
+_camera_lock = threading.Lock()
 
 _preview_tokens: dict[str, dict] = {}
 _preview_lock = threading.Lock()
@@ -123,7 +123,7 @@ def _generate_mjpeg(rtsp_url: str, max_duration_sec: float | None = None):
     deadline = (time.time() + max_duration_sec) if max_duration_sec else None
     try:
         while True:
-            if deadline and time.time() >= deadline:
+            if deadline is not None and isinstance(deadline, (int, float)) and time.time() >= deadline:
                 break
             ok, frame = cap.read()
             if not ok or frame is None:
@@ -212,8 +212,10 @@ def get_all_cameras(force: bool = False, user_email: str | None = None) -> list[
 
 @camera_bp.route("/api/cameras")
 def api_cameras():
+    """Get all cameras (cached or refreshed if ?refresh=1)."""
     user_email = session.get("user")
-    cameras = get_all_cameras(user_email=user_email)
+    force_refresh = request.args.get("refresh", "0") == "1"
+    cameras = get_all_cameras(force=force_refresh, user_email=user_email)
     return jsonify(cameras)
 
 
@@ -447,10 +449,14 @@ def api_test_local_camera_stream():
     with _preview_lock:
         _cleanup_expired_preview_tokens()
         token_data = _preview_tokens.get(token)
-        current_user = session.get("user")
-        if not token_data or token_data.get("owner_email") != current_user:
+        if token_data is None:
             return Response("Connection Failed", status=404, mimetype="text/plain")
-        rtsp_url = token_data["rtsp_url"]
+        
+        current_user = session.get("user")
+        if token_data.get("owner_email") != current_user:
+            return Response("Connection Failed", status=404, mimetype="text/plain")
+            
+        rtsp_url = str(token_data.get("rtsp_url") or "")
 
     return Response(_generate_mjpeg(rtsp_url, max_duration_sec=10.0), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -464,10 +470,14 @@ def camera_test_feed():
     with _preview_lock:
         _cleanup_expired_preview_tokens()
         token_data = _preview_tokens.get(token)
-        current_user = session.get("user")
-        if not token_data or token_data.get("owner_email") != current_user:
+        if token_data is None:
             return Response("Connection Failed", status=404, mimetype="text/plain")
-        rtsp_url = token_data["rtsp_url"]
+            
+        current_user = session.get("user")
+        if token_data.get("owner_email") != current_user:
+            return Response("Connection Failed", status=404, mimetype="text/plain")
+            
+        rtsp_url = str(token_data.get("rtsp_url") or "")
 
     return Response(_generate_mjpeg(rtsp_url, max_duration_sec=10.0), mimetype="multipart/x-mixed-replace; boundary=frame")
 

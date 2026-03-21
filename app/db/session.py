@@ -145,6 +145,19 @@ def init_db() -> None:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             cur.execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'")
+            
+            # --- MANDATORY COLUMN WIDENING (Fix for 'value too long' errors) ---
+            # Explicitly ALTER existing columns to ensure they are wide enough for labels like 'MOTION_YOLO'
+            for table in ["movement_log", "member_timestamp"]:
+                cur.execute(f"ALTER TABLE {table} ALTER COLUMN camera_id TYPE VARCHAR(100)")
+                cur.execute(f"ALTER TABLE {table} ALTER COLUMN event_type TYPE VARCHAR(100)")
+                cur.execute(f"ALTER TABLE {table} ALTER COLUMN person_type TYPE VARCHAR(50)")
+                cur.execute(f"ALTER TABLE {table} ALTER COLUMN staff_name TYPE VARCHAR(100)")
+            
+            # Widen attendance status as well
+            cur.execute("ALTER TABLE attendance ALTER COLUMN status TYPE VARCHAR(50)")
+            cur.execute("ALTER TABLE attendance ALTER COLUMN day_status TYPE VARCHAR(50)")
+            
             conn.commit()
         except Exception:
             conn.rollback()

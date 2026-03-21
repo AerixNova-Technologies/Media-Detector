@@ -442,19 +442,26 @@
         // ─── Load camera list ──────────────────────────────────────────────
         async function loadCameras() {
           const list = document.getElementById('camera-list');
-          list.innerHTML = '<div class="loading-cameras"><div class="spinner"></div>Loading camerasâ€¦</div>';
+          list.innerHTML = '<div class="loading-cameras"><div class="spinner"></div>Loading cameras…</div>';
           try {
-            const res = await fetch('/api/cameras');
+            // Use refresh=1 and timestamp to bypass all caches
+            const res = await fetch('/api/cameras?refresh=1&t=' + Date.now());
             const cams = await res.json();
             renderCameras(cams);
+
+            // Re-select active camera to refresh its video stream
+            if (activeCamId) {
+              const active = cams.find(c => String(c.id) == String(activeCamId));
+              if (active) selectCamera(active.id, active.name, true);
+            }
           } catch (e) {
-            list.innerHTML = '<div class="loading-cameras">âš  Could not load cameras</div>';
+            list.innerHTML = '<div class="loading-cameras">⚠️ Could not load cameras</div>';
           }
         }
 
         function renderCameras(cams) {
           const list = document.getElementById('camera-list');
-          if (!cams.length) {
+          if (!cams || !Array.isArray(cams) || !cams.length) {
             list.innerHTML = '<div class="loading-cameras">No cameras found</div>';
             return;
           }
@@ -470,8 +477,12 @@
             const sub = c.type === 'local'
               ? `${c.brand ? c.brand + ' · ' : ''}${c.ip || ''}`
               : (c.type === 'webcam' ? 'Built-in / USB' : '');
+            
+            // Use loose equality (==) because activeCamId might be string while c.id is integer
+            const isActive = (c.id == activeCamId);
+
             return `
-        <div class="cam-item ${c.id === activeCamId ? 'active' : ''}"
+        <div class="cam-item ${isActive ? 'active' : ''}"
              id="cam-${c.id}" onclick="selectCamera('${c.id}','${c.name}')">
           <div class="cam-icon">${icon}</div>
           <div class="cam-info">
@@ -481,14 +492,14 @@
               ${sub || c.status || 'Available'}
             </div>
           </div>
-          ${c.id === activeCamId ? '<div class="active-indicator"></div>' : ''}
+          ${isActive ? '<div class="active-indicator"></div>' : ''}
         </div>`;
           }).join('');
         }
 
         // -- Select & start camera -------------------------------------------------
-        async function selectCamera(id, name) {
-          if (activeCamId === id) return;
+        async function selectCamera(id, name, force = false) {
+          if (activeCamId === id && !force) return;
 
           document.querySelectorAll('.cam-item').forEach(el => el.classList.remove('active'));
           const el = document.getElementById(`cam-${id}`);
