@@ -18,7 +18,7 @@ class TelegramNotifier:
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            cur.execute("SELECT bot_token, chat_ids FROM telegram_bots WHERE is_active = TRUE")
+            cur.execute("SELECT id, bot_name, bot_token, chat_ids FROM telegram_bots WHERE is_active = TRUE")
             rows = cur.fetchall()
             cur.close()
             conn.close()
@@ -30,6 +30,15 @@ class TelegramNotifier:
     def send_message(self, text, track_id=None, cam_name=None, action=None):
         """Send message across all active bots and log to database."""
         active_bots = self._get_active_bots()
+        
+        # FALLBACK: If no bots in DB, use .env (legacy/emergency support)
+        if not active_bots:
+            env_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+            env_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+            if env_token and env_chat_id:
+                active_bots = [{'bot_token': env_token, 'chat_ids': env_chat_id}]
+                log.info("AI Notifier: Falling back to .env Telegram configuration.")
+
         any_success = False
         success_cids = []
         
@@ -39,7 +48,10 @@ class TelegramNotifier:
                 raw_ids = bot['chat_ids']
                 chat_ids = [i.strip() for i in raw_ids.split(",") if i.strip()]
                 
-                for cid in chat_ids:
+                updated_ids = list(chat_ids)
+                needs_db_sync = False
+
+                for idx, cid in enumerate(chat_ids):
                     url = f"https://api.telegram.org/bot{token}/sendMessage"
                     payload = {
                         "chat_id": cid,
@@ -48,6 +60,19 @@ class TelegramNotifier:
                     }
                     try:
                         resp = requests.post(url, json=payload, timeout=5)
+                        data = resp.json()
+                        
+                        # Handle Migration (Chat moved to supergroup)
+                        if resp.status_code == 400 and "migrate_to_chat_id" in data.get("parameters", {}):
+                            new_cid = str(data["parameters"]["migrate_to_chat_id"])
+                            log.warning(f"Telegram Migration: {cid} -> {new_cid}. Updating database.")
+                            updated_ids[idx] = new_cid
+                            needs_db_sync = True
+                            # Retry with new ID
+                            payload["chat_id"] = new_cid
+                            resp = requests.post(url, json=payload, timeout=5)
+                            data = resp.json()
+
                         if resp.status_code == 200:
                             log.info(f"Telegram notification sent via bot to {cid}.")
                             any_success = True
@@ -56,6 +81,19 @@ class TelegramNotifier:
                             log.error(f"Telegram error for {cid}: {resp.text}")
                     except Exception as e:
                         log.error(f"Failed to send Telegram to {cid}: {e}")
+                
+                # AUTO-SYNC MIGRATIONS BACK TO DB
+                if needs_db_sync and 'id' in bot:
+                    try:
+                        from app.db.session import get_db_connection
+                        conn = get_db_connection()
+                        cur = conn.cursor()
+                        cur.execute("UPDATE telegram_bots SET chat_ids = %s WHERE id = %s", (",".join(updated_ids), bot['id']))
+                        conn.commit()
+                        conn.close()
+                        log.info(f"Sync: Updated group ID migration for Bot #{bot['id']}")
+                    except Exception as db_e:
+                        log.error(f"Failed to sync migration to DB: {db_e}")
         
         # LOG TO DATABASE (Structured Data)
         from app.db.session import get_db_connection
