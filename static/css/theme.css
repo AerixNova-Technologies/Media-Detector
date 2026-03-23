@@ -17,6 +17,7 @@
   --success-bg: rgba(16, 185, 129, 0.1);
   --error-bg: rgba(239, 68, 68, 0.1);
   --accent-bg: rgba(37, 99, 235, 0.05);
+  --surface-overlay: #ffffff;
 }
 
 :root[data-theme='dark'] {
@@ -35,6 +36,7 @@
   --success-bg: rgba(74, 222, 128, 0.15);
   --error-bg: rgba(251, 113, 133, 0.15);
   --accent-bg: rgba(96, 165, 250, 0.15);
+  --surface-overlay: #1e293b;
 }
 
 body {
