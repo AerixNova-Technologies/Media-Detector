@@ -273,6 +273,9 @@ class AIPipeline(threading.Thread):
                                         from app.services.attendance_service import update_person_identity
                                         log.info(f"AI: [AUTO-CORRECT] {old_id} -> {name} for Track {tid}")
                                         update_person_identity(member_id=td["db_id"], staff_id=td["staff_db_id"], staff_name=name)
+                                        
+                                        # PARALLEL TELEGRAM: Notify upon successful identity match
+                                        self.notifier.notify_person(tid, self.camera_name, identity=name, action=td.get("action", ""), image_path=td.get("entry_image_path"))
                         
                         return res.get("name", "Unknown")
             except Exception as e:
@@ -448,16 +451,33 @@ class AIPipeline(threading.Thread):
                         td["display_id"] = f"{new_id} (#{tid})"
                         
                         # Late Update: If already logged as Unknown (or wrong ID), fix it now across all logs
-                        if td["logged"] and td.get("last_synced_id") != new_id:
+                        # Also sync if the name is correct but we found a better photo/clarity
+                        should_sync_id = td.get("last_synced_id") != new_id
+                        should_sync_img = td["best_clarity"] > (td.get("last_synced_clarity", 0) + 50) # Sync only if significantly better
+                        
+                        if td["logged"] and (should_sync_id or should_sync_img):
                             from app.services.attendance_service import update_person_identity
-                            log.info(f"AI: [IDENTITY SYNC] Synchronizing Track {tid} -> {new_id} in all logs")
+                            # Save the best crop to a file if it's the one we're syncing
+                            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            sync_crop_filename = f"sync_crop_{tid}_{ts}.jpg"
+                            sync_crop_path = os.path.join("static", "uploads", "movement", sync_crop_filename)
+                            if td.get("best_frame") is not None:
+                                cv2.imwrite(sync_crop_path, td["best_frame"])
+                            
+                            log.info(f"AI: [VISUAL SYNC] Updating Track {tid} -> {new_id} (Clarity: {td['best_clarity']:.1f})")
                             update_person_identity(
                                 member_id=td.get("db_id"), 
                                 staff_id=td["staff_db_id"], 
                                 staff_name=new_id,
-                                track_id=tid
+                                track_id=tid,
+                                image_path=f"static/uploads/movement/{sync_crop_filename}" if td.get("best_frame") is not None else None,
+                                confidence=td["best_clarity"]
                             )
                             td["last_synced_id"] = new_id
+                            td["last_synced_clarity"] = td["best_clarity"]
+
+                            # PARALLEL TELEGRAM: Notify when officially recognized
+                            self._rec_executor.submit(self.notifier.notify_person, tid, self.camera_name, identity=new_id, action=td.get("action", ""), image_path=td.get("entry_image_path"))
 
                 # A. Frame Collection...
                 
@@ -587,17 +607,22 @@ class AIPipeline(threading.Thread):
                                 camera_id=self.camera_name,
                                 person_type=person_type,
                                 staff_id=s_id,
-                                image_path=f"static/uploads/movement/{full_filename}", # UI shows context
+                                image_path=f"static/uploads/movement/{full_filename}", 
                                 confidence=td["best_clarity"],
                                 staff_name=current_id if person_type == "staff" else None,
                                 track_id=tid,
                                 event_type='ENTRY'
                             )
                             td["db_id"] = res_id
-                        
-                        td["logged"] = True
+                            td["logged"] = True
+                        # Ensure absolute path for Telegram reliability
+                        td["entry_image_path"] = os.path.abspath(full_path)
                         log.info(f"AI: Logged {person_type} Entry for Track {tid} ({current_id})")
+                        # PARALLEL TELEGRAM: Notify upon initial entry log
+                        self._rec_executor.submit(self.notifier.notify_person, tid, self.camera_name, identity=current_id, action=td.get("action", ""), image_path=td.get("entry_image_path"))
+
             # ── EXIT HANDLING (With 15-frame Grace Period) ──
+            # self._active_ids contains IDs from PREVIOUS frame
             for tid in list(self._active_ids):
                 if tid not in active_ids:
                     td = self.track_data.get(tid)
@@ -744,9 +769,6 @@ class AIPipeline(threading.Thread):
                         # ONLY for human tracks
                         if td["obj_type"] == "human" and (is_unknown or (self._frame_idx % 100 == 0)) and active_rec_tasks < 2:
                             self._submit_rec(ai_frame, bbox, tid)
-                        
-                        # NON-BLOCKING TELEGRAM: Run in executor so YOLO doesn't stop
-                        self._rec_executor.submit(self.notifier.notify_person, tid, self.camera_name, action)
                     except Exception as e:
                         log.error("Sync error: %s", e)
 
@@ -780,10 +802,11 @@ class AIPipeline(threading.Thread):
             return AIResult(motion=False, entries=self.entries, exits=self.exits)
 
     def reload_faces(self):
-        """Trigger face recognizer to re-scan the uploads folder."""
+        """Trigger face recognizer to re-scan the uploads folder in the background."""
         if hasattr(self, 'face_rec'):
-            log.info("AI Pipeline: Reloading face signatures...")
-            self.face_rec.load_from_folder(self.face_rec.db_path)
+            log.info("AI Pipeline: Triggering background reload of face signatures...")
+            # Use the recognition executor so it doesn't block the main YOLO loop
+            self._rec_executor.submit(self.face_rec.load_from_folder, self.face_rec.db_path)
 
     def _calculate_iou(self, box1, box2):
         """Calculate Intersection over Union (IoU) of two bounding boxes."""

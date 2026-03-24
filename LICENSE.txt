@@ -1,0 +1,16 @@
+MISSION CONTROL - END USER LICENSE AGREEMENT
+------------------------------------------
+
+1. GRANT OF LICENSE
+By installing this software, you are granted a non-exclusive license to use the Mission Control AI CCTV Surveillance System.
+
+2. USAGE RESTRICTIONS
+You may not reverse engineer, decompile, or disassemble the core AI models included in this package without explicit permission.
+
+3. PRIVACY & DATA
+All AI processing is performed LOCALLY on this machine. No video data is sent to the cloud unless you explicitly enable Telegram notifications.
+
+4. NO WARRANTY
+This software is provided "AS IS" without warranty of any kind. 
+
+Do you accept these terms? Click 'Next' to proceed with the installation.

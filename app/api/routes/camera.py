@@ -21,6 +21,7 @@ import os
 import time
 import threading
 import uuid
+import urllib.parse
 
 import base64
 import cv2
@@ -71,9 +72,11 @@ from urllib.parse import quote
 def _build_rtsp_url(ip: str, port: int, user: str, password: str, path: str) -> str:
     normalized_path = _normalize_rtsp_path(path)
     if user and password:
-        encoded_user = quote(user)
-        encoded_pass = quote(password)
-        return f"rtsp://{encoded_user}:{encoded_pass}@{ip}:{port}{normalized_path}"
+        # We now use STRICT encoding for everything except alphanumeric.
+        # This is the safest way for URIs.
+        quoted_user = quote(user, safe='')
+        quoted_pass = quote(password, safe='')
+        return f"rtsp://{quoted_user}:{quoted_pass}@{ip}:{port}{normalized_path}"
     return f"rtsp://{ip}:{port}{normalized_path}"
 
 
@@ -92,6 +95,8 @@ def _issue_preview_token(rtsp_url: str, owner_email: str | None) -> str:
 
 def _test_rtsp_connection(rtsp_url: str) -> tuple[bool, object | None]:
     # Set FFMPEG open timeout to 5 seconds before VideoCapture
+    # Force TCP (Interleaved) for testing to bypass UDP firewall blocks
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
     cap = cv2.VideoCapture()
     cap.setExceptionMode(False)
     # CAP_PROP_OPEN_TIMEOUT_MSEC and READ_TIMEOUT_MSEC require OpenCV 4.x+
@@ -272,7 +277,13 @@ def api_select():
             conn.close()
             if not row:
                 return jsonify({"error": "Local camera record not found"}), 404
-            rtsp_url = _build_rtsp_url(row["ip_address"], row["port"], row["username"], row["password"], row["stream_path"])
+            ip, port, user, pw, path = (
+                row["ip_address"], row["port"], row["username"],
+                row["password"], row["stream_path"],
+            )
+            rtsp_url = _build_rtsp_url(ip=ip, port=port, user=user, password=pw, path=path)
+
+            log.info("Starting local RTSP: %s", rtsp_url)
             cam_mgr.start(rtsp_url, cam["name"], roles=cam.get("roles", []))
         except Exception as e:
             log.error("Local camera start error: %s", e)

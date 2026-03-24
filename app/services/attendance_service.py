@@ -135,7 +135,7 @@ def log_person(
         conn.close()
 
 
-def update_person_identity(member_id: int, staff_id: int, staff_name: str, track_id: int | None = None, movement_id: int | None = None):
+def update_person_identity(member_id: int, staff_id: int, staff_name: str, track_id: int | None = None, movement_id: int | None = None, image_path: str | None = None, confidence: float | None = None):
     """Update existing logs with staff info (used if recognized late or corrected)."""
     conn = get_db_connection()
     try:
@@ -146,10 +146,23 @@ def update_person_identity(member_id: int, staff_id: int, staff_name: str, track
             log.info(f"DB: Updating member_timestamp #{member_id} to staff {staff_name} (ID: {staff_id})")
             cur.execute("""
                 UPDATE member_timestamp 
-                SET person_type = 'staff', staff_id = %s, staff_name = %s
+                SET person_type = 'staff', staff_id = %s, staff_name = %s,
+                    image_path = COALESCE(%s, image_path),
+                    confidence_score = COALESCE(%s, confidence_score)
                 WHERE id = %s
-            """, (staff_id, staff_name, member_id))
+                RETURNING camera_id, image_path
+            """, (staff_id, staff_name, image_path, confidence, member_id))
+            row = cur.fetchone()
             
+            # TRIGGER ATTENDANCE TABLE (Crucial Fix: Ensure staff gets marked present even if recognized late)
+            if row:
+                cam_id = row["camera_id"]
+                effective_image = image_path or row["image_path"]
+                try:
+                    track_staff_attendance(staff_id, staff_name=staff_name, entry_image=effective_image, camera_name=cam_id)
+                except Exception as ex:
+                    log.warning(f"Failed to trigger attendance in update_person_identity: {ex}")
+
             # SSE UPDATE
             sse_manager.announce({
                 "id": member_id,
@@ -242,6 +255,7 @@ def track_staff_attendance(
     staff_name: str | None = None,
     detected_at: datetime | None = None,
     entry_image: str | None = None,
+    camera_name: str | None = "Camera",
 ) -> dict:
     """One-row-per-day attendance: first entry fixed, last exit keeps updating."""
     detected_at = detected_at or datetime.now()

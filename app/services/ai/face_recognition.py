@@ -84,8 +84,8 @@ class FaceRecognizer:
             
             # ATOMIC SWAP: No transient empty states!
             self._known_faces = loaded_faces
-            self._cache.clear()
-            self._counters.clear()
+            # self._cache.clear() # REMOVED: Keep current track identities stable during reload
+            # self._counters.clear()
                     
         except Exception as e:
             log.error("FaceRec: Error loading from folder: %s", e)

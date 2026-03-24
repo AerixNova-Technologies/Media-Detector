@@ -116,19 +116,80 @@ class TelegramNotifier:
 
         return any_success
 
-    def notify_person(self, track_id, cam_name, action=""):
-        now = time.monotonic()
-        last_time = self.last_notify_time.get(track_id, 0)
-        
-        if (now - last_time) < self.cooldown:
-            return # Still in cooldown for this specific person
+    def send_photo(self, photo_path, caption=None, track_id=None, cam_name=None, action=None):
+        """Send photo with optional caption across all active bots."""
+        if not os.path.exists(photo_path):
+            log.warning(f"Telegram Photo: File not found at {photo_path}")
+            return False
+
+        active_bots = self._get_active_bots()
+        if not active_bots: return False
+
+        any_success = False
+        for bot in active_bots:
+            token = bot['bot_token']
+            chat_ids = [i.strip() for i in bot['chat_ids'].split(",") if i.strip()]
             
-        msg = f"🚨 *MISSION CONTROL ALERT*\n\n"
-        msg += f"👤 *New Person Tracked*\n"
+            for cid in chat_ids:
+                url = f"https://api.telegram.org/bot{token}/sendPhoto"
+                try:
+                    with open(photo_path, 'rb') as photo:
+                        files = {'photo': photo}
+                        data = {
+                            "chat_id": cid,
+                            "caption": caption,
+                            "parse_mode": "Markdown"
+                        }
+                        resp = requests.post(url, data=data, files=files, timeout=10)
+                        if resp.status_code == 200:
+                            log.info(f"Telegram photo sent to {cid}.")
+                            any_success = True
+                        else:
+                            log.error(f"Telegram photo error for {cid}: {resp.text}")
+                except Exception as e:
+                    log.error(f"Failed to send Telegram photo to {cid}: {e}")
+        return any_success
+
+    def notify_person(self, track_id, cam_name, identity="Unknown", action="", image_path=None):
+        now = time.monotonic()
+        
+        # Identity Awareness: Store the last name we notified for
+        last_data = self.last_notify_time.get(track_id, (0, "Unknown"))
+        last_time, last_name = last_data
+        
+        # SMART COOLDOWN: 
+        is_same_id = (str(identity) == str(last_name))
+        is_cooldown = (now - last_time) < self.cooldown
+        
+        if is_cooldown and is_same_id:
+            return 
+            
+        log.info(f"Telegram Trigger: Track {track_id} as {identity} (Previous: {last_name})")
+        
+        is_first_alert = (str(last_name) == "Unknown")
+        is_correction = (not is_first_alert and str(identity) != str(last_name))
+        
+        if is_correction:
+            msg = f"🔄 *IDENTITY CONFIRMED*\n\n"
+        else:
+            msg = f"🚨 *MISSION CONTROL ALERT*\n\n"
+            
+        if identity and str(identity) != "Unknown":
+            msg += f"👤 *Staff Recognized: {identity}*\n"
+        else:
+            msg += f"👤 *New Person Tracked*\n"
+            
         msg += f"📍 *Camera:* {cam_name}\n"
         msg += f"🆔 *Track ID:* {track_id}\n"
         if action:
             msg += f"🏃 *Activity:* {action}\n"
         
-        if self.send_message(msg, track_id=track_id, cam_name=cam_name, action=action):
-            self.last_notify_time[track_id] = now
+        # Determine notification method (Photo vs Message)
+        success = False
+        if image_path and os.path.exists(image_path):
+            success = self.send_photo(image_path, caption=msg, track_id=track_id, cam_name=cam_name, action=action)
+        else:
+            success = self.send_message(msg, track_id=track_id, cam_name=cam_name, action=action)
+
+        if success:
+            self.last_notify_time[track_id] = (now, str(identity))

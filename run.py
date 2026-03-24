@@ -27,6 +27,11 @@ import sys
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
+# Ensuring project root is in sys.path for portable execution
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
 # ── Load .env BEFORE importing anything else ─────────────────────────────────
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 if os.path.exists(_env_path):

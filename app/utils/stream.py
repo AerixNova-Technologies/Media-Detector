@@ -68,8 +68,8 @@ class VideoStream:
         )
 
         if is_url:
-            # Force UDP and Kill Buffering for instant RTSP
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp|fflags;nobuffer|probesize;32"
+            # Force TCP (Interleaved) and Kill Buffering for stable and instant RTSP
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|probesize;32"
             self._cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
         else:
             # On Windows, DirectShow (CAP_DSHOW) is MUCH faster for webcam init

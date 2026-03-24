@@ -178,8 +178,27 @@ def init_db() -> None:
                         (r_name, r_desc, r_perms, r_sys)
                     )
                 conn.commit()
-        except Exception:
+            
+            # 2.2 ENSURE SUPERADMIN USER EXISTS
+            cur.execute("SELECT email FROM users WHERE email = %s", ('admin@aerixtech.com',))
+            if not cur.fetchone():
+                print(">>> SEEDING: Superadmin User")
+                import werkzeug.security
+                pw_hash = werkzeug.security.generate_password_hash('Aerixnova@123')
+                
+                # Get Admin role ID
+                cur.execute("SELECT id FROM roles WHERE name = 'Administrator'")
+                admin_role = cur.fetchone()
+                role_id = admin_role['id'] if admin_role else None
+                
+                cur.execute("""
+                    INSERT INTO users (email, name, company, password_hash, role_id, status)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, ('admin@aerixtech.com', 'Super Admin', 'Aerixnova', pw_hash, role_id, 'active'))
+                conn.commit()
+        except Exception as e:
             conn.rollback()
+            log.error(f"Seeding failed: {e}")
 
         # 3. Settings & Hardware
         run_block("""
