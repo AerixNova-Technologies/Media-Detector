@@ -204,6 +204,7 @@ function setPeriod(p) {
 }
 
 function resetAndLoadLogs() { logCurrentPage = 1; loadMemberLogs(); }
+function setLogPageSize(v) { logPageSize = parseInt(v, 10) || 20; logCurrentPage = 1; loadMemberLogs(); }
 
 async function loadMemberLogs() {
     const type = document.getElementById('log-type-filter').value;
@@ -299,16 +300,26 @@ function renderPagination(p) {
     const end = Math.min(p.page * p.limit, p.total);
 
     cont.innerHTML = `
-        <div style="display: flex; align-items: center; gap: var(--s-4);">
-            <span>Showing signature matches <strong>${start}–${end}</strong> of <strong>${p.total}</strong></span>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <span>Showing signature matches <strong>${start}–${end}</strong> of <strong>${p.total}</strong></span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px;">SCALE:</span>
+          <select class="saas-input" style="width:70px; height:28px; font-size:11px; padding:0 8px;" onchange="setLogPageSize(this.value)">
+            <option value="10" ${logPageSize===10?'selected':''}>10</option>
+            <option value="20" ${logPageSize===20?'selected':''}>20</option>
+            <option value="50" ${logPageSize===50?'selected':''}>50</option>
+          </select>
         </div>
-        <div style="display: flex; align-items: center; gap: var(--s-2);">
+      </div>
+      <div style="display:flex; align-items:center; gap:var(--s-4);">
+        <span>Page ${p.page} of ${p.pages}</span>
+        <div style="display:flex; gap:8px;">
             <button class="pagination-btn" onclick="changePage(1)" ${p.page === 1 ? 'disabled' : ''}><i data-lucide="chevrons-left" style="width:14px;"></i></button>
             <button class="pagination-btn" onclick="changePage(${p.page - 1})" ${p.page === 1 ? 'disabled' : ''}><i data-lucide="chevron-left" style="width:14px;"></i></button>
-            <span style="margin: 0 var(--s-2); font-weight: 600; color: var(--text-primary);">Page ${p.page} of ${p.pages}</span>
             <button class="pagination-btn" onclick="changePage(${p.page + 1})" ${p.page === p.pages ? 'disabled' : ''}><i data-lucide="chevron-right" style="width:14px;"></i></button>
             <button class="pagination-btn" onclick="changePage(${p.pages})" ${p.page === p.pages ? 'disabled' : ''}><i data-lucide="chevrons-right" style="width:14px;"></i></button>
         </div>
+      </div>
     `;
     lucide.createIcons();
 }
