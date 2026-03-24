@@ -2,268 +2,163 @@
 {% set active_page = 'settings' %}
 
 {% block content %}
-<div id="view-settings" style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-<div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-
-  <!-- ── Page Header ── -->
-  <div style="margin-bottom: 24px;">
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
-      <span style="font-size:24px;">⚙</span>
-      <h1 style="font-size:22px; font-weight:800; color: var(--text); margin:0;">Settings</h1>
-    </div>
-    <p style="font-size:13px; color: var(--muted); margin:0;">Manage all system configurations and preferences in one place</p>
-  </div>
-
-  <!-- ── Pill Tab Bar ── -->
-  <div class="s-pill-tabs">
-    <button class="s-pill active" onclick="showCat(event,'cat-general')">General</button>
-    <button class="s-pill" onclick="showCat(event,'cat-cameras')">Cameras</button>
-    <button class="s-pill" onclick="showCat(event,'cat-attendance')">Attendance</button>
-    <button class="s-pill" onclick="showCat(event,'cat-system')">System</button>
-  </div>
-
-  <!-- ══ GENERAL ══ -->
-  <div id="cat-general" class="s-cat active">
-    <div class="s-section-header">
-      <div class="s-section-title">Account Settings</div>
-      <div class="s-section-sub">Configure your profile and access preferences</div>
-    </div>
-    <div class="s-card-grid">
-      <a href="/settings/profile" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">👤</div>
-        <div class="s-card-body">
-          <div class="s-card-title">My Profile</div>
-          <div class="s-card-desc">View your name, email, and organization details</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      {% if user_permissions.all or user_permissions.users_view or not user_permissions %}
-      <a href="/settings/users" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">👥</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Users & Teams</div>
-          <div class="s-card-desc">Manage users, teams, and departments</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      {% endif %}
-
-      {% if user_permissions.all or user_permissions.roles_view or not user_permissions %}
-      <a href="/settings/roles" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">🛡️</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Roles & Permissions</div>
-          <div class="s-card-desc">Configure access control and permissions (RBAC)</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- ══ CAMERAS ══ -->
-  <div id="cat-cameras" class="s-cat">
-    <div class="s-section-header">
-      <div class="s-section-title">Camera Management</div>
-      <div class="s-section-sub">Add and manage your surveillance cameras</div>
-    </div>
-    <div class="s-card-grid">
-      {% if user_permissions.all or user_permissions.cameras_view or not user_permissions %}
-      <a href="/settings/cameras" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">📷</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Local IP Cameras</div>
-          <div class="s-card-desc">Add RTSP cameras from your local network</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      {% endif %}
-
-
-    </div>
-  </div>
-
-  <!-- ══ ATTENDANCE ══ -->
-  <div id="cat-attendance" class="s-cat">
-    <div class="s-section-header">
-      <div class="s-section-title">Attendance Behaviour</div>
-      <div class="s-section-sub">Configure how entry, exit and end-of-day are detected from camera recognition</div>
+<div class="page-wrap">
+    <!-- Page Header -->
+    <div style="margin-bottom: var(--s-10);">
+        <h1 class="heading" style="font-size: 28px; color: var(--text-primary); display: flex; align-items: center; gap: var(--s-3);">
+            <i data-lucide="settings-2" style="color: var(--accent);"></i>
+            System Configuration Hub
+        </h1>
+        <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">
+            Manage your hardware array, security protocols, and third-party uplink parameters.
+        </p>
     </div>
 
-    <div class="att-inline-panel">
-      <div class="att-inline-header">
-        <div>
-          <div class="att-inline-title">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Detection Timings
-          </div>
-          <div class="att-inline-sub">Controls when exits and end-of-day are declared</div>
-        </div>
-        <button class="s-save-btn" onclick="saveAttendanceSettings()">Save Changes</button>
-      </div>
-
-      <div class="att-grid">
-
-        <div class="att-field-block">
-          <label class="att-label">Exit Timeout</label>
-          <select id="att-exit-timeout" class="att-select">
-            <option value="2">2 minutes</option>
-            <option value="5">5 minutes</option>
-            <option value="10">10 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-          </select>
-          <div class="att-hint">How long after disappearing from camera before marking a person as OUT</div>
-        </div>
-
-        <div class="att-field-block">
-          <label class="att-label">End of Day Hour</label>
-          <select id="att-eod-hour" class="att-select">
-            <option value="17">5:00 PM</option>
-            <option value="18">6:00 PM</option>
-            <option value="19">7:00 PM</option>
-            <option value="20">8:00 PM</option>
-            <option value="21">9:00 PM</option>
-            <option value="0">Midnight (disabled)</option>
-          </select>
-          <div class="att-hint">After this hour, the last exit is treated as end of day and attendance is closed</div>
-        </div>
-
-        <div class="att-field-block">
-          <label class="att-label">Exit Notifications</label>
-          <div class="att-toggle-wrap">
-            <label class="att-toggle">
-              <input type="checkbox" id="att-notify-exit">
-              <span class="att-track"></span>
-            </label>
-            <span id="att-notify-label" class="att-toggle-text">Enabled</span>
-          </div>
-          <div class="att-hint">Send a Telegram alert when a recognised person exits the camera view</div>
-        </div>
-
-      </div>
-
-      <div class="att-info-bar">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Changes take effect immediately — no app restart required. The attendance watcher reads these values on every 30-second cycle.
-      </div>
+    <!-- Navigation Tabs -->
+    <div style="display: flex; gap: var(--s-1); margin-bottom: var(--s-10); background: var(--bg-surface-alt); padding: 4px; border-radius: var(--radius-lg); border: 1px solid var(--border-main); width: 100%;">
+        <button class="nav-pill active" style="flex: 1;" onclick="showCat(event,'cat-general')">General</button>
+        <button class="nav-pill" style="flex: 1;" onclick="showCat(event,'cat-cameras')">Hardware</button>
+        <button class="nav-pill" style="flex: 1;" onclick="showCat(event,'cat-attendance')">Attendance</button>
+        <button class="nav-pill" style="flex: 1;" onclick="showCat(event,'cat-system')">System</button>
     </div>
 
-    <div class="att-links-grid">
-      <a href="/settings/cameras" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">📷</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Camera Management</div>
-          <div class="s-card-desc">Add and manage RTSP cameras used for recognition</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      <a href="/attendance" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">📋</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Attendance Records</div>
-          <div class="s-card-desc">View IN/OUT history, movement log and daily summaries</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-      <a href="/settings/staff" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">👥</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Staff Profiles</div>
-          <div class="s-card-desc">Manage staff photos used for face recognition</div>
-        </div>
-        <div class="s-card-arrow">›</div>
-      </a>
-    </div>
-  </div>
+    <!-- ══ GENERAL ══ -->
+    <div id="cat-general" class="s-cat active">
+        <h3 class="heading" style="font-size: 14px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--s-4);">Account & Access</h3>
+        <div class="s-card-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <a href="/settings/profile" class="saas-card settings-hub-card">
+                <div class="settings-hub-icon" style="color: var(--accent);"><i data-lucide="user"></i></div>
+                <div style="flex: 1;">
+                    <h4 class="heading" style="font-size: 15px;">Personnel Profile</h4>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Update your system identity.</p>
+                </div>
+            </a>
 
+            <a href="/settings/users" class="saas-card settings-hub-card">
+                <div class="settings-hub-icon" style="color: var(--info);"><i data-lucide="users"></i></div>
+                <div style="flex: 1;">
+                    <h4 class="heading" style="font-size: 15px;">User Directory</h4>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Manage system operators.</p>
+                </div>
+            </a>
 
-  <!-- ══ SYSTEM ══ -->
-  <div id="cat-system" class="s-cat">
-    <div class="s-section-header">
-      <div class="s-section-title">System Configuration</div>
-      <div class="s-section-sub">Application diagnostics and advanced settings</div>
-    </div>
-    <div class="s-card-grid">
-      <a href="/settings/appearance" class="s-card" style="text-decoration:none;">
-        <div class="s-card-icon">🎨</div>
-        <div class="s-card-body">
-          <div class="s-card-title">Appearance</div>
-          <div class="s-card-desc">Customize theme, branding, and navigation</div>
+            <a href="/settings/roles" class="saas-card settings-hub-card">
+                <div class="settings-hub-icon" style="color: var(--warning);"><i data-lucide="shield-check"></i></div>
+                <div style="flex: 1;">
+                    <h4 class="heading" style="font-size: 15px;">Roles & Permissions</h4>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">RBAC security policies.</p>
+                </div>
+            </a>
+
+            <a href="/settings/appearance" class="saas-card settings-hub-card">
+                <div class="settings-hub-icon" style="color: var(--accent);"><i data-lucide="palette"></i></div>
+                <div style="flex: 1;">
+                    <h4 class="heading" style="font-size: 15px;">Visual Interface</h4>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">UI customization.</p>
+                </div>
+            </a>
         </div>
-        <div class="s-card-arrow">›</div>
-      </a>
     </div>
-  </div>
 
-</div>
+    <!-- ══ CAMERAS ══ -->
+    <div id="cat-cameras" class="s-cat">
+        <h3 class="heading" style="font-size: 14px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--s-4);">Hardware Infrastructure</h3>
+        <div class="s-card-grid">
+            <a href="/settings/cameras" class="saas-card settings-hub-card">
+                <div class="settings-hub-icon" style="color: var(--accent);"><i data-lucide="video"></i></div>
+                <div style="flex: 1;">
+                    <h4 class="heading" style="font-size: 15px;">IP Surveillance Units</h4>
+                    <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 2px;">Provision RTSP/ONVIF compatible camera feeds.</p>
+                </div>
+                <i data-lucide="chevron-right" style="width: 16px; color: var(--text-tertiary);"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- ══ ATTENDANCE ══ -->
+    <div id="cat-attendance" class="s-cat">
+        <h3 class="heading" style="font-size: 14px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--s-4);">Behavioural Analysis</h3>
+        
+        <div class="saas-card att-panel" style="margin-bottom: var(--s-8);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--s-8);">
+                <div>
+                    <h4 class="heading" style="font-size: 18px; display: flex; align-items: center; gap: var(--s-2);">
+                        <i data-lucide="clock-4" style="color: var(--accent); width: 20px;"></i>
+                        Detection Timings
+                    </h4>
+                    <p style="font-size: 13px; color: var(--text-tertiary); margin-top: var(--s-1);">Controls when exits and end-of-day sessions are declared.</p>
+                </div>
+                <button class="saas-btn btn-primary" onclick="saveAttendanceSettings()">
+                    <i data-lucide="save" style="width: 16px;"></i> Save Parameters
+                </button>
+            </div>
+
+            <div class="att-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-8); margin-bottom: var(--s-6);">
+                <div class="saas-input-group">
+                    <label class="heading" style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary);">Exit Timeout Threshold</label>
+                    <select id="att-exit-timeout" class="saas-input">
+                        <option value="2">2 minutes</option>
+                        <option value="5">5 minutes</option>
+                        <option value="10">10 minutes</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                    </select>
+                    <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">Delay before confirming a personnel exit.</p>
+                </div>
+
+                <div class="saas-input-group">
+                    <label class="heading" style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary);">Operational Cut-off (EOD)</label>
+                    <select id="att-eod-hour" class="saas-input">
+                        <option value="17">5:00 PM</option>
+                        <option value="18">6:00 PM</option>
+                        <option value="19">7:00 PM</option>
+                        <option value="20">8:00 PM</option>
+                        <option value="21">9:00 PM</option>
+                        <option value="0">Midnight (disabled)</option>
+                    </select>
+                    <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">After this hour, final exits are EOD events.</p>
+                </div>
+
+                <div class="saas-input-group">
+                    <label class="heading" style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary);">Exit Alerts Uplink</label>
+                    <div style="display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) 0;">
+                        <input type="checkbox" id="att-notify-exit" style="width: 18px; height: 18px; accent-color: var(--accent);">
+                        <span id="att-notify-label" style="font-size: 14px; font-weight: 600;">Enabled</span>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">Real-time Telegram alerts for verified exits.</p>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: var(--s-3); padding: var(--s-4); background: var(--accent-soft); border-radius: var(--radius-md); border: 1px solid var(--border-accent); color: var(--accent); font-size: 12px;">
+                <i data-lucide="info" style="width: 16px;"></i>
+                Synchronised changes occur every 30-second logic cycle. No restart required.
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ SYSTEM ══ -->
+    <div id="cat-system" class="s-cat">
+        <h3 class="heading" style="font-size: 14px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--s-4);">Core Configuration</h3>
+        <div class="s-card-grid">
+            <a href="/settings/staff" class="saas-card settings-hub-card">
+                <div class="settings-hub-icon" style="color: var(--success);"><i data-lucide="user-plus"></i></div>
+                <div style="flex: 1;">
+                    <h4 class="heading" style="font-size: 15px;">Member Enrolment</h4>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Manage personnel face signatures.</p>
+                </div>
+            </a>
+        </div>
+    </div>
 </div>
 
 <style>
-.s-pill-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--surface2); padding: 5px; border-radius: 10px; width: 100%; margin-bottom: 36px; border: 1px solid var(--border); }
-.s-pill { background: none; border: none; padding: 10px 20px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all 0.2s; text-align: center; }
-.s-pill:hover { color: var(--text); }
-.s-pill.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
-.s-cat { display: none; }
+.s-cat { display: none; margin-top: var(--s-4); animation: slideUp 0.3s ease; }
 .s-cat.active { display: block; }
-.s-section-header { margin-bottom: 16px; }
-.s-section-title { font-size: 16px; font-weight: 700; color: var(--text); }
-.s-section-sub { font-size: 13px; color: var(--muted); margin-top: 3px; }
-.s-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.s-card { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.2s; box-shadow: var(--shadow-sm); }
-.s-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.s-card-icon { width: 40px; height: 40px; background: var(--accent-bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.s-card-body { flex: 1; }
-.s-card-title { font-size: 14px; font-weight: 700; color: var(--text); }
-.s-card-desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
-.s-card-arrow { font-size: 20px; color: var(--muted); margin-left: 4px; }
-.att-inline-panel {
-  background:var(--bg); border:1px solid var(--border); border-radius:12px;
-  padding:24px 28px; margin-bottom:20px;
-}
-.att-inline-header {
-  display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px;
-}
-.att-inline-title {
-  font-size:14px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:7px;
-}
-.att-inline-sub { font-size:12px; color:var(--muted); margin-top:3px; }
-.att-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; margin-bottom:20px; }
-.att-field-block { display:flex; flex-direction:column; gap:7px; }
-.att-label { font-size:11px; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:.05em; }
-.att-select {
-  width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px;
-  font-size:13px; outline:none; background:var(--surface); color:var(--text);
-  cursor:pointer; transition:border-color .15s;
-}
-.att-select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.1); }
-.att-hint { font-size:11.5px; color:var(--muted); line-height:1.5; }
-.att-toggle-wrap { display:flex; align-items:center; gap:10px; padding:4px 0; }
-.att-toggle { position:relative; display:inline-block; width:40px; height:22px; flex-shrink:0; }
-.att-toggle input { opacity:0; width:0; height:0; }
-.att-track {
-  position:absolute; cursor:pointer; inset:0; background:var(--border);
-  border-radius:22px; transition:.2s;
-}
-.att-track::before {
-  content:''; position:absolute; height:16px; width:16px;
-  left:3px; bottom:3px; background:white; border-radius:50%; transition:.2s;
-}
-.att-toggle input:checked + .att-track { background:var(--accent); }
-.att-toggle input:checked + .att-track::before { transform:translateX(18px); }
-.att-toggle-text { font-size:13px; font-weight:600; color:var(--text); }
-.att-info-bar {
-  display:flex; align-items:flex-start; gap:8px; padding:12px 14px;
-  background:var(--accent-bg); border:1px solid rgba(37,99,235,.15);
-  border-radius:8px; font-size:12px; color:var(--accent); line-height:1.5;
-}
-.att-links-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-.s-save-btn {
-  padding:9px 18px; background:var(--accent); color:white; border:none;
-  border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;
-  transition:opacity .15s;
-}
-.s-save-btn:hover { opacity:.88; }
+.s-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--s-6); }
+.settings-hub-card { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-6); text-decoration: none; border: 1px solid var(--border-main); }
+.settings-hub-icon { width: 48px; height: 48px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 20px; background: var(--bg-surface-alt); border: 1px solid var(--border-light); }
+.nav-pill { padding: 8px 18px; border-radius: var(--radius-md); border: none; background: transparent; color: var(--text-tertiary); font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 13px; }
+.nav-pill.active { background: var(--bg-surface); color: var(--accent); box-shadow: var(--shadow-sm); }
 </style>
 
 <script>
@@ -304,22 +199,35 @@ async function saveAttendanceSettings() {
     });
     const d = await r.json();
     if (d.success) {
-      const btn = document.querySelector('.s-save-btn');
-      btn.textContent = '\u2713 Saved';
-      btn.style.background = 'var(--green)';
-      setTimeout(() => { btn.textContent = 'Save Changes'; btn.style.background = ''; }, 2000);
+      const btn = document.querySelector('button[onclick="saveAttendanceSettings()"]');
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<i data-lucide="check"></i> Parameters Saved';
+      btn.classList.replace('btn-primary', 'btn-secondary');
+      btn.style.borderColor = 'var(--success)';
+      btn.style.color = 'var(--success)';
+      if(window.lucide) lucide.createIcons();
+      setTimeout(() => { 
+        btn.innerHTML = originalHtml; 
+        btn.classList.replace('btn-secondary', 'btn-primary');
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        if(window.lucide) lucide.createIcons();
+      }, 2000);
     }
   } catch(e) { alert('Save failed'); }
 }
 
-document.addEventListener('DOMContentLoaded', loadAttendanceSettings);
-
-
 function showCat(e, catId) {
-  document.querySelectorAll('.s-pill').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-pill').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.s-cat').forEach(el => el.classList.remove('active'));
   e.currentTarget.classList.add('active');
   document.getElementById(catId).classList.add('active');
+  if(window.lucide) lucide.createIcons();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadAttendanceSettings();
+    if(window.lucide) lucide.createIcons();
+});
 </script>
 {% endblock %}

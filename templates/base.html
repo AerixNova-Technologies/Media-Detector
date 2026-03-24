@@ -1,902 +1,343 @@
 <!DOCTYPE html>
-<html lang="en" data-sidebar-toggle="{{ 'true' if sys_settings.get('sidebar_toggle') == 'true' else 'false' }}">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MISSION CONTROL</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/theme.css?v=20">
-  <link rel="stylesheet" href="/static/css/layout.css?v=20">
-  <link rel="stylesheet" href="/static/css/components.css?v=20">
+  <title>Mission Control AI</title>
 
-  <link rel="icon" type="image/x-icon"
-    href="{{ sys_settings.favicon_url if sys_settings.favicon_url else '/static/favicon.ico' }}">
-  {% from 'macros/components.html' import logo, nav_tab %}
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+
+  <!-- Modern UI CSS -->
+  <link rel="stylesheet" href="/static/css/modern_ui.css">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Core App Logic -->
+  <script src="/static/js/app.js"></script>
+
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+
+  <!-- Dynamic Brand Colors -->
+  {% if sys_settings.primary_color %}
+  <style>
+    :root {
+      --accent: {{ sys_settings.primary_color }} !important;
+      --accent-hover: {{ sys_settings.primary_color }}dd !important;
+      --accent-soft: {{ sys_settings.accent_color or 'rgba(124, 58, 237, 0.08)' }} !important;
+      --border-accent: {{ sys_settings.primary_color }}22 !important;
+    }
+    :root[data-theme='dark'] {
+      --accent: {{ sys_settings.primary_color }} !important;
+      --accent-hover: {{ sys_settings.primary_color }}ee !important;
+      --accent-glow: {{ sys_settings.primary_color }}33 !important;
+    }
+  </style>
+  {% endif %}
 
   <script>
-    // Theme Init (Avoid flash)
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    // Sidebar toggle gate — set from server setting
-    window.sidebarToggleEnabled = document.documentElement.getAttribute('data-sidebar-toggle') === "true";
+    // Theme Init
+    (function () {
+      const savedTheme = localStorage.getItem('theme') || '{{ sys_settings.theme_mode|default("light") }}';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
   </script>
 </head>
 
 <body>
-  <div class="app-layout">
-    <style>
-      .app-layout {
-        display: flex;
-        height: 100vh;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      }
-
-      /* Mini Sidebar Mode */
-      .app-layout.sidebar-collapsed .global-sidebar {
-        width: 72px;
-        padding: 24px 12px;
-      }
-
-      .app-layout.sidebar-collapsed .logo-text,
-      .app-layout.sidebar-collapsed .nav-label,
-      .app-layout.sidebar-collapsed .sidebar-footer .user-details,
-      .app-layout.sidebar-collapsed .theme-menu-btn {
-        display: none !important;
-      }
-
-      .app-layout.sidebar-collapsed .sidebar-logo-block {
-        justify-content: center;
-      }
-
-      .app-layout.sidebar-collapsed .nav-tab {
-        justify-content: center;
-        padding: 12px;
-        gap: 0;
-      }
-
-      .app-layout.sidebar-collapsed .nav-icon {
-        margin: 0;
-        font-size: 24px;
-      }
-
-      .nav-tab {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 16px;
-        border-radius: 8px;
-        color: var(--muted);
-        text-decoration: none;
-        transition: all 0.2s ease;
-      }
-
-      .nav-icon {
-        font-size: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      /* Sidebar Submenu Styling */
-      .nav-group {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .nav-group-toggle {
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 16px;
-        border-radius: 8px;
-        color: var(--muted);
-        transition: all 0.2s ease;
-      }
-
-      .nav-group-toggle:hover {
-        background: var(--surface2);
-        color: var(--text);
-      }
-
-      .nav-arrow {
-        margin-left: auto;
-        font-size: 16px;
-        transition: transform 0.3s ease;
-        opacity: 0.5;
-      }
-
-      .nav-group.open .nav-arrow {
-        transform: rotate(90deg);
-      }
-
-      .nav-sub {
-        display: none;
-        flex-direction: column;
-        gap: 2px;
-        padding-left: 44px;
-        margin-bottom: 4px;
-      }
-
-      .nav-group.open .nav-sub {
-        display: flex;
-      }
-
-      .nav-sub-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 12px;
-        font-size: 13px;
-        color: var(--muted);
-        text-decoration: none;
-        border-radius: 6px;
-        transition: all 0.2s ease;
-      }
-
-      .nav-sub-item:hover {
-        color: var(--text);
-        background: var(--surface2);
-      }
-
-      .nav-sub-item.active {
-        color: var(--accent);
-        font-weight: 600;
-        background: var(--accent-bg);
-      }
-
-      .nav-dot {
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: currentColor;
-        opacity: 0.4;
-      }
-
-      .app-layout.sidebar-collapsed .nav-arrow {
-        display: none !important;
-      }
-
-      /* Floating Submenu in Collapsed Mode */
-      .app-layout.sidebar-collapsed .nav-group {
-        position: relative;
-      }
-
-      .app-layout.sidebar-collapsed .nav-group:hover .nav-sub {
-        display: flex !important;
-        position: fixed;
-        left: 64px;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 8px;
-        min-width: 190px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-        z-index: 9999;
-        flex-direction: column;
-        padding-left: 8px !important;
-      }
-
-      .nav-sub-header {
-        display: none;
-        padding: 8px 12px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: var(--muted);
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 6px;
-        letter-spacing: 0.05em;
-      }
-
-      .app-layout.sidebar-collapsed .nav-sub-header {
-        display: block;
-      }
-
-      .app-layout.sidebar-collapsed .nav-sub-item {
-        padding: 8px 14px !important;
-      }
-    </style>
-    <!-- ─── Global Left Sidebar ─── -->
-    <nav class="global-sidebar">
-      <div class="sidebar-logo-block">
-        {% if sys_settings.logo_url %}
-        <img src="{{ sys_settings.logo_url }}" alt="Logo"
-          style="width: 38px; height: 38px; border-radius: 8px; object-fit: cover;">
-        {% else %}
-        <div class="logo-icon"><svg fill="none" stroke="white" stroke-width="2.5" viewBox="0 0 24 24" width="22"
-            height="22">
-            <path d="M2 12h3M19 12h3M12 2v3M12 19v3"></path>
-            <circle cx="12" cy="12" r="7"></circle>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg></div>
-        {% endif %}
-        <span class="logo-text">{{ sys_settings.company_name|default('MISSION CONTROL') }}</span>
-      </div>
-
-      <div class="nav-tabs">
-        {% set perms = user_permissions|default({}) %}
-        {% if perms.all or perms.dashboard_view or perms is not defined or not perms %}
-        {{ nav_tab('Dashboard', '📊', active=(active_page == 'dashboard'), url='/') }}
-        {% endif %}
-
-        {% if perms.all or perms.cameras_view or perms is not defined or not perms %}
-        {{ nav_tab('Live View', '📡', active=(active_page == 'live'), url='/live') }}
-        {% endif %}
-
-        {% if perms.all or perms.staff_view or perms is not defined or not perms %}
-        {{ nav_tab('Member Directory', '👤', active=(sub_page == 'members'), url='/settings/members') }}
-        {% endif %}
-
-        {% if perms.all or perms.general_movement_view or perms is not defined or not perms %}
-        {{ nav_tab('General movement', '🚶', active=(active_page == 'general_movement'), url='/general-movement') }}
-        {% endif %}
-
-        {% if perms.all or perms.member_logs_view or perms is not defined or not perms %}
-        {{ nav_tab('Member Logs', '📋', active=(active_page == 'member_logs'), url='/member-logs') }}
-        {% endif %}
-
-        {% if perms.all or perms.attendance_view or perms is not defined or not perms %}
-        {{ nav_tab('Attendance', '📅', active=(active_page == 'attendance'), url='/attendance') }}
-        {% endif %}
-
-        {% if perms.all or perms.settings_view or perms is not defined or not perms %}
-        <div class="nav-group {{ 'open' if active_page in ['telegram', 'telegram_notifications'] else '' }}">
-          <div class="nav-tab nav-group-toggle {{ 'active' if active_page in ['telegram', 'telegram_notifications'] else '' }}" onclick="this.parentElement.classList.toggle('open')">
-            <span class="nav-icon">✈️</span>
-            <span class="nav-label">Telegram</span>
-            <span class="nav-arrow">›</span>
-          </div>
-          <div class="nav-sub">
-            <div class="nav-sub-header">Telegram</div>
-            <a href="/telegram" class="nav-sub-item {{ 'active' if active_page == 'telegram' else '' }}">
-              <span class="nav-dot"></span> Bot Settings
-            </a>
-            <a href="/telegram/notifications" class="nav-sub-item {{ 'active' if active_page == 'telegram_notifications' else '' }}">
-              <span class="nav-dot"></span> Telegram Notification
-            </a>
-          </div>
+  <div class="app-layout" id="app-layout">
+    <!-- SaaS Sidebar -->
+    <aside class="saas-sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div
+          style="width: 40px; height: 40px; background: var(--accent); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: white;">
+          <i data-lucide="shield-check"></i>
         </div>
-        {% endif %}
-
-        {% if perms.all or perms.reports_view or perms is not defined or not perms %}
-        {{ nav_tab('Reports', '📋', active=(active_page == 'reports'), url='/reports') }}
-        {% endif %}
-
-
-
-        {% if perms.all or perms.settings_view or perms is not defined or not perms %}
-        {{ nav_tab('Settings', '⚙️', active=(active_page == 'settings'), url='/settings') }}
-        {% endif %}
+        <span class="heading" style="font-size: 18px; letter-spacing: -0.5px;">Mission Control</span>
       </div>
 
+      <!-- Scrollable Nav Container -->
+      <div class="sidebar-nav-container"
+        style="flex: 1; overflow-y: auto; margin: 0 calc(var(--s-4) * -1); padding: 0 var(--s-4);">
+        <nav class="sidebar-nav">
+          {% set perms = user_permissions|default({}) %}
 
-      <div class="sidebar-footer" style="padding-top: 20px; border-top: 1px solid var(--border); margin-top: auto;">
-        <div style="display: flex; align-items: center; gap: 12px; position: relative; padding: 4px;">
-          <!-- User Profile Slice -->
+          <a href="/" class="nav-link {{ 'active' if active_page == 'dashboard' else '' }}">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+
+          <a href="/live" class="nav-link {{ 'active' if active_page == 'live' else '' }}">
+            <i data-lucide="video"></i>
+            <span>Live Monitoring</span>
+          </a>
+
+          <a href="/settings/members" class="nav-link {{ 'active' if active_page == 'members' else '' }}">
+            <i data-lucide="users"></i>
+            <span>Members</span>
+          </a>
+
+          <a href="/general-movement" class="nav-link {{ 'active' if active_page == 'general_movement' else '' }}">
+            <i data-lucide="move"></i>
+            <span>General Movement</span>
+          </a>
+
+          <a href="/member-logs" class="nav-link {{ 'active' if active_page == 'member_logs' else '' }}">
+            <i data-lucide="users"></i>
+            <span>Member Logs</span>
+          </a>
+
+          <a href="/attendance" class="nav-link {{ 'active' if active_page == 'attendance' else '' }}">
+            <i data-lucide="calendar-check"></i>
+            <span>Attendance Monitoring</span>
+          </a>
+
+          <a href="/reports" class="nav-link {{ 'active' if active_page == 'reports' else '' }}">
+            <i data-lucide="bar-chart-2"></i>
+            <span>Analytics Reports</span>
+          </a>
+
+          <a href="/telegram/notifications"
+            class="nav-link {{ 'active' if active_page == 'telegram_notifications' else '' }}">
+            <i data-lucide="bell-ring"></i>
+            <span>Telegram Notifications</span>
+          </a>
+
+          <a href="/telegram" class="nav-link {{ 'active' if active_page == 'telegram' else '' }}">
+            <i data-lucide="send"></i>
+            <span>Telegram Integration</span>
+          </a>
+
+          <a href="/settings" class="nav-link {{ 'active' if active_page == 'settings' else '' }}">
+            <i data-lucide="settings"></i>
+            <span>System Settings</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div
+        style="margin-top: auto; padding-top: var(--s-6); border-top: 1px solid var(--border-light); background: var(--bg-surface);">
+        <div style="display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2);">
           <div
-            style="width: 36px; height: 36px; border-radius: 8px; background: var(--accent-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; border: 1px solid var(--accent);">
-            {{ (user_info.full_name|default('U') if user_info else 'U')[:2]|upper }}
+            style="width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--bg-surface-alt); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--accent); border: 1px solid var(--border-main); flex-shrink: 0;">
+            {{ (user_info.full_name|default('U'))[:1]|upper }}
           </div>
-
-          <div class="user-details" style="flex: 1; min-width: 0;">
+          <div class="sidebar-footer-text" style="flex: 1; min-width: 0;">
             <div
-              style="font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              {{ user_info.full_name if user_info else 'User' }}
+              style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              {{ user_info.full_name|default('User') }}
             </div>
             <div
-              style="font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              {{ user_info.email if user_info else '' }}
+              style="font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              {{ user_info.email|default('Administrator')|lower }}
             </div>
           </div>
-
-          <button class="theme-menu-btn" onclick="toggleThemeMenu(event)"
-            style="background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px;">⋮</button>
-
-          <!-- Dropdown Menu -->
-          <div id="theme-dropdown" class="theme-dropdown"
-            style="bottom: 100%; right: 0; margin-bottom: 8px; width: 200px;">
-            <div class="menu-item-nested" onclick="toggleSubmenu(event)">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 16px;">☀</span> Theme
-              </div>
-              <span class="arrow-right">›</span>
-
-              <div class="submenu">
-                <div class="theme-item" onclick="setTheme('light')"><span>☀️</span> Light Mode</div>
-                <div class="theme-item" onclick="setTheme('dark')"><span>🌙</span> Dark Mode</div>
-              </div>
-            </div>
-
-            <div
-              style="padding: 10px 16px 4px; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid var(--border); margin-top: 4px;">
-              Account</div>
-            <a href="/logout" style="text-decoration: none;">
-              <div class="theme-item" style="color: var(--red);"><span>🚪</span> Sign Out</div>
-            </a>
-          </div>
+          <a href="/logout" title="Sign Out"
+            style="color: var(--text-tertiary); transition: var(--transition); flex-shrink: 0;">
+            <i data-lucide="log-out" style="width: 18px;"></i>
+          </a>
         </div>
       </div>
-    </nav>
+    </aside>
 
     <!-- ─── Main Content Area ─── -->
-    <div class="main-content">
-      <!-- ─── Top Bar (Status Only) ─── -->
-      <div class="topbar" style="display: flex; justify-content: space-between; align-items: center; padding: 0 24px;">
-        <div class="topbar-left" style="display: flex; align-items: center; gap: 8px;">
-          {% if sys_settings.show_breadcrumbs == 'true' %}
-          <nav class="breadcrumbs"
-            style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--muted);">
-            <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" onclick="toggleSidebar()"
-              title="Toggle Sidebar" id="sidebar-toggle-btn">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"
-                stroke-linecap="round" stroke-linejoin="round" style="opacity: 1;">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="9" y1="3" x2="9" y2="21"></line>
-              </svg>
-              <a href="/" style="text-decoration: none; color: var(--muted); font-size: 14px;"
-                onclick="event.stopPropagation()">Home</a>
-            </div>
-            {% set path_parts = request.path.strip('/').split('/') %}
-            {% for part in path_parts if part %}
-            {% if part != 'dashboard' and not (active_page == 'members' and part == 'settings') %}
-            <span>/</span>
-            {% if not loop.last %}
-            <a href="/{{ path_parts[:loop.index]|join('/') }}"
-              style="text-decoration: none; color: var(--muted); text-transform: capitalize;">{{ part.replace('_', ' ')
-              if part not in ['members', 'staff'] else 'Member Directory' }}</a>
-            {% else %}
-            <span style="color: var(--text); text-transform: capitalize;">{{ part.replace('_', ' ') if part not in
-              ['members', 'staff'] else 'Member Directory' }}</span>
-            {% endif %}
-            {% endif %}
-            {% endfor %}
-            {% if request.path == '/' %}
-            <span>/</span>
-            <span style="color: var(--text);">Dashboard</span>
-            {% endif %}
-          </nav>
-          {% endif %}
-        </div>
-
-        {% if active_page == 'live' %}
-        <div class="topbar-status">
-          <div id="sys-badge" class="badge offline">
-            <div class="pulse off" id="pulse"></div> Idle
-          </div>
-          <span id="fps-display" class="fps-chip">– FPS</span>
-        </div>
-        {% endif %}
-      </div>
-
-      <!-- ─── Main View Container ─── -->
-
-      {% block content %}{% endblock %}
-
-      <script>
-        let activeCamId = null;
-        let statsInterval = null;
-        let lastStreamId = 0;
-
-        // Page-specific initializers (loadDashboard, fetchToggles, etc.)
-        // are defined in their respective templates.
-
-        async function updateToggles() {
-          const payload = {
-            person: document.getElementById('toggle-person').checked,
-            action: document.getElementById('toggle-action').checked,
-            emotion: document.getElementById('toggle-emotion').checked,
-          };
-          try {
-            await fetch('/api/toggles', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-          } catch (e) { console.error(e) }
-        }
-
-        async function sendManualAlert() {
-          const btn = document.querySelector('.notify-btn');
-          const oldText = btn.innerHTML;
-          btn.innerHTML = '<span>⏳</span> Sending...';
-          btn.disabled = true;
-
-          try {
-            const res = await fetch('/api/notify_manual', { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-              btn.innerHTML = '<span>✅</span> Sent Successfully!';
-              btn.style.borderColor = 'var(--green)';
-              btn.style.color = 'var(--green)';
-            } else {
-              btn.innerHTML = '<span>❌</span> Failed to Send';
-            }
-          } catch (e) {
-            btn.innerHTML = '<span>❌</span> Error';
-          }
-
-          setTimeout(() => {
-            btn.innerHTML = oldText;
-            btn.disabled = false;
-            btn.style.borderColor = '';
-            btn.style.color = '';
-          }, 3000);
-        }
-
-        async function fetchToggles() {
-          try {
-            const res = await fetch('/api/toggles');
-            const data = await res.json();
-            document.getElementById('toggle-person').checked = data.person;
-            document.getElementById('toggle-action').checked = data.action;
-            document.getElementById('toggle-emotion').checked = data.emotion;
-          } catch (e) { }
-        }
-
-        // --- Role Management ---
-        let currentMenuCamId = null;
-        function openRoleMenu(event, camId, existingRoles) {
-          event.stopPropagation();
-          currentMenuCamId = camId;
-          const menu = document.getElementById('role-menu-popup');
-          
-          const roles = ['Entry', 'Exit', 'General'];
-          menu.innerHTML = `
-            <div class="role-menu-header">Camera Roles</div>
-            <div class="role-options">
-              ${roles.map(r => `
-                <label class="role-option">
-                  <input type="checkbox" value="${r}" ${existingRoles.includes(r) ? 'checked' : ''} onchange="saveRoles()">
-                  <span>${r}</span>
-                </label>
-              `).join('')}
-            </div>
-          `;
-          
-          const rect = event.target.getBoundingClientRect();
-          menu.style.display = 'block';
-          
-          // Smart positioning
-          let top = rect.bottom + window.scrollY;
-          let left = rect.left - 170 + window.scrollX;
-          
-          // Keep on screen
-          if (left < 10) left = 10;
-          if (left + 200 > window.innerWidth) left = window.innerWidth - 210;
-          
-          menu.style.top = `${top}px`;
-          menu.style.left = `${left}px`;
-          
-          // Close on outside click
-          setTimeout(() => {
-            document.addEventListener('click', function _close(e) {
-              if (!menu.contains(e.target)) {
-                closeRoleMenu();
-                document.removeEventListener('click', _close);
-              }
-            });
-          }, 0);
-        }
-
-        function closeRoleMenu() {
-          const menu = document.getElementById('role-menu-popup');
-          if (menu) menu.style.display = 'none';
-        }
-
-        async function saveRoles() {
-          const menu = document.getElementById('role-menu-popup');
-          const checkboxes = menu.querySelectorAll('input[type="checkbox"]:checked');
-          const roles = Array.from(checkboxes).map(cb => cb.value);
-          
-          if (!currentMenuCamId) return;
-          
-          try {
-            const res = await fetch(`/api/cameras/${currentMenuCamId}/roles`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ roles })
-            });
-            const data = await res.json();
-            if (data.success) {
-              loadCameras(); // Reload to show new tags
-            } else {
-              alert('Error: ' + (data.error || 'Unknown error'));
-            }
-          } catch (e) {
-            console.error('Error saving roles:', e);
-          }
-        }
-
-        // ─── Load camera list ──────────────────────────────────────────────
-        async function loadCameras() {
-          const list = document.getElementById('camera-list');
-          if (list) list.innerHTML = '<div class="loading-cameras"><div class="spinner"></div>Loading cameras…</div>';
-          
-          const grid = document.getElementById('camera-grid');
-          if (grid) grid.innerHTML = '<div class="loading-cameras"><div class="spinner"></div>Loading camera previews…</div>';
-
-          try {
-            const res = await fetch('/api/cameras?refresh=1&t=' + Date.now());
-            const cams = await res.json();
-            
-            if (list) renderCameras(cams);
-            if (grid) renderGrid(cams);
-
-            if (activeCamId) {
-              const active = cams.find(c => String(c.id) == String(activeCamId));
-              if (active) selectCamera(active.id, active.name, true);
-            }
-          } catch (e) {
-            if (list) list.innerHTML = '<div class="loading-cameras">⚠️ Could not load cameras</div>';
-            if (grid) grid.innerHTML = '<div class="loading-cameras">⚠️ Could not load grid</div>';
-          }
-        }
-
-        function renderCameras(cams) {
-          const list = document.getElementById('camera-list');
-          if (!list) return;
-          if (!cams || !Array.isArray(cams) || !cams.length) {
-            list.innerHTML = '<div class="loading-cameras">No cameras found</div>';
-            return;
-          }
-          list.innerHTML = cams.map(c => {
-            const isOnline = c.status && c.status.includes('Online');
-            const dot = isOnline ? 'dot-green' : 'dot-red';
-            const webcamSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><circle cx="12" cy="12" r="4"></circle></svg>`;
-            const cctvSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>`;
-            const localSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>`;
-            let icon = cctvSvg;
-            if (c.type === 'webcam') icon = webcamSvg;
-            else if (c.type === 'local') icon = localSvg;
-            const sub = c.type === 'local'
-              ? `${c.brand ? c.brand + ' · ' : ''}${c.ip || ''}`
-              : (c.type === 'webcam' ? 'Built-in / USB' : '');
-            
-            const isActive = (c.id == activeCamId);
-            const rolesHtml = (c.roles || []).map(r => `<span class="role-text-tag">${r}</span>`).join('');
-
-            return `
-        <div class="cam-item ${isActive ? 'active' : ''}"
-             id="cam-${c.id}" onclick="selectCamera('${c.id}','${c.name}')">
-          <div class="cam-icon">${icon}</div>
-          <div class="cam-info">
-            <div class="cam-name">
-              ${c.name}
-              <div class="cam-roles-tags">${rolesHtml}</div>
-            </div>
-            <div class="cam-status">
-              <span class="dot ${dot}"></span>
-              ${sub || c.status || 'Available'}
-            </div>
-          </div>
-          <button class="cam-menu-btn" onclick="event.stopPropagation(); openRoleMenu(event, '${c.id}', ${JSON.stringify(c.roles || [])})">
-            ⋮
+    <main class="main-content">
+      <!-- Topbar -->
+      <header class="saas-topbar">
+        <div style="display: flex; align-items: center; gap: var(--s-4);">
+          <button class="icon-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+            <i data-lucide="menu"></i>
           </button>
-          ${isActive ? '<div class="active-indicator"></div>' : ''}
-        </div>`;
-          }).join('');
-        }
-
-        function renderGrid(cams) {
-          const grid = document.getElementById('camera-grid');
-          if (!grid) return;
-          if (!cams || !Array.isArray(cams) || !cams.length) {
-            grid.innerHTML = '<div class="loading-cameras">No cameras found</div>';
-            return;
-          }
-
-          grid.innerHTML = cams.map(c => {
-            const isOnline = c.status && c.status.includes('Online');
-            const dot = isOnline ? 'dot-green' : 'dot-red';
-            const streamUrl = `/api/camera_preview_stream/${c.id}?t=${Date.now()}`;
-            const rolesHtml = (c.roles || []).map(r => `<span class="role-text-tag">${r}</span>`).join('');
-            
-            return `
-              <div class="grid-card" onclick="selectCamera('${c.id}','${c.name}')">
-                <div class="grid-video-wrapper">
-                  <div class="grid-badge">LIVE</div>
-                  <img class="grid-stream" src="${streamUrl}" alt="${c.name}">
-                  <button class="card-expand-btn" onclick="event.stopPropagation(); selectCamera('${c.id}','${c.name}')" title="Expand this camera">
-                    <span>⛶</span>
-                  </button>
-                </div>
-                <div class="grid-card-info">
-                  <div class="grid-card-name">
-                    ${c.name}
-                    <div class="cam-roles-tags">${rolesHtml}</div>
-                  </div>
-                  <button class="cam-menu-btn" onclick="event.stopPropagation(); openRoleMenu(event, '${c.id}', ${JSON.stringify(c.roles || [])})">
-                    ⋮
-                  </button>
-                  <div class="grid-card-status">
-                    <span class="dot ${dot}"></span>
-                    ${c.type === 'local' ? c.ip : 'Active'}
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('');
-        }
-
-        function showGrid(forceRefresh = false) {
-          const gridView = document.getElementById('camera-grid-view');
-          const focus = document.getElementById('focused-view');
-          if (gridView && focus) {
-            gridView.style.display = 'block';
-            focus.style.display = 'none';
-            // Stop high-res camera
-            stopCamera();
-            // Only refresh if explicitly asked or if grid is empty
-            if (forceRefresh || !document.getElementById('camera-grid').innerHTML.trim()) {
-              loadCameras();
-            }
-          }
-        }
-
-        function toggleGridFullscreen() {
-          const container = document.querySelector('.video-area');
-          const isFull = document.body.classList.toggle('grid-fullscreen-active');
-          const icon = document.querySelector('.fs-icon');
-          
-          if (isFull) {
-            if (icon) icon.textContent = '❌';
-            if (container.requestFullscreen) {
-              container.requestFullscreen();
-            } else if (container.webkitRequestFullscreen) {
-              container.webkitRequestFullscreen();
-            }
-          } else {
-            if (icon) icon.textContent = '⛶';
-            if (document.fullscreenElement) {
-              document.exitFullscreen();
-            }
-          }
-        }
-        
-        document.addEventListener('fullscreenchange', () => {
-          if (!document.fullscreenElement) {
-            document.body.classList.remove('grid-fullscreen-active');
-            const icon = document.querySelector('.fs-icon');
-            if (icon) icon.textContent = '⛶';
-            // Return to grid when exiting fullscreen, but without re-loading
-            showGrid(false);
-          }
-        });
-
-        // -- Select & start camera -------------------------------------------------
-        async function selectCamera(id, name, force = false) {
-          if (activeCamId === id && !force) {
-            // If already active, just switch view and return
-            const gridView = document.getElementById('camera-grid-view');
-            const focus = document.getElementById('focused-view');
-            if (gridView && focus) {
-              gridView.style.display = 'none';
-              focus.style.display = 'block';
-            }
-            return;
-          }
-
-          // Switch views
-          const gridView = document.getElementById('camera-grid-view');
-          const focus = document.getElementById('focused-view');
-          if (gridView && focus) {
-            gridView.style.display = 'none';
-            focus.style.display = 'block';
-          }
-
-          document.querySelectorAll('.cam-item').forEach(el => el.classList.remove('active'));
-          const el = document.getElementById(`cam-${id}`);
-          if (el) el.classList.add('active');
-
-          const img = document.getElementById('stream-img');
-          const ph = document.getElementById('placeholder');
-          
-          // INSTANT TRANSITION: 
-          // If we have a preview for this camera in the grid, use it IMMEDIATELY
-          const gridImg = document.querySelector(`.grid-card[onclick*="'${id}'"] .grid-stream`);
-          if (gridImg && gridImg.src) {
-            img.src = gridImg.src;
-            img.classList.add('visible');
-            ph.style.display = 'none';
-          } else {
-            img.classList.remove('visible');
-            ph.style.display = 'flex';
-            ph.querySelector('p').textContent = 'Connecting to camera...';
-          }
-
-          try {
-            const res = await fetch('/api/select', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id }),
-            });
-            const data = await res.json();
-            if (data.error) { 
-              if (ph.style.display !== 'none') ph.querySelector('p').textContent = 'Error: ' + data.error; 
-              return; 
-            }
-
-            activeCamId = id;
-
-            // Wait a tiny bit for the backend to switch sources reliably
-            setTimeout(() => {
-              img.src = '/video_feed?cam=' + encodeURIComponent(id) + '&t=' + Date.now();
-              img.classList.add('visible');
-              ph.style.display = 'none';
-            }, 100);
-            img.classList.add('visible');
-            ph.style.display = 'none';
-            // Reset placeholder text
-            ph.querySelector('p').textContent = 'Connecting to camera...';
-
-            document.getElementById('live-badge').style.display = 'block';
-            document.getElementById('cam-label').style.display = 'block';
-            document.getElementById('cam-label').textContent = name;
-            document.getElementById('stop-btn').disabled = false;
-            setSysOnline(true);
-
-            if (statsInterval) clearInterval(statsInterval);
-            statsInterval = setInterval(fetchStats, 1000);
-
-          } catch (e) {
-            ph.querySelector('p').textContent = 'Failed: ' + e.message;
-          }
-        }
-
-        // â”€â”€ Stop camera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        async function stopCamera() {
-          await fetch('/api/stop', { method: 'POST' });
-          activeCamId = null;
-          if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
-
-          document.getElementById('stream-img').classList.remove('visible');
-          document.getElementById('placeholder').style.display = 'flex';
-          document.getElementById('live-badge').style.display = 'none';
-          document.getElementById('cam-label').style.display = 'none';
-          document.getElementById('stop-btn').disabled = true;
-          document.querySelectorAll('.cam-item').forEach(el => el.classList.remove('active'));
-          setSysOnline(false);
-          resetStats();
-        }
-
-        // â”€â”€ Fetch live stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        async function fetchStats() {
-          try {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            updateStats(data);
-          } catch (_) { }
-        }
-
-        function updateStats(d) {
-          document.getElementById('stat-persons').textContent = d.persons;
-
-          const entryEl = document.getElementById('stat-entries');
-          if (entryEl) entryEl.textContent = d.entries || '0';
-
-          const exitEl = document.getElementById('stat-exits');
-          if (exitEl) exitEl.textContent = d.exits || '0';
-
-          document.getElementById('stat-fps').textContent = d.fps;
-          const fpsChip = document.getElementById('fps-display');
-          if (fpsChip) fpsChip.textContent = d.fps + ' FPS';
-          const motEl = document.getElementById('stat-motion');
-          motEl.textContent = d.motion ? 'YES' : 'NO';
-          motEl.className = 'metric-val ' + (d.motion ? 'green' : 'red');
-
-          const cards = document.getElementById('person-cards');
-          if (!d.tracks || d.tracks.length === 0) {
-            cards.classList.remove('fade-in');
-            cards.innerHTML = '<div class="no-persons"><div class="no-icon">🧍</div>No persons detected</div>';
-            return;
-          }
-          
-          if (cards.innerHTML.length < 100 || d.tracks.length > 0) {
-              cards.classList.remove('fade-in');
-              void cards.offsetWidth;
-              cards.classList.add('fade-in');
-          }
-
-          cards.innerHTML = d.tracks.map(t => {
-            const isAlert = t.action && (t.action.includes('âš ') || t.action.includes('ðŸƒ'));
-            const identityStr = (t.identity && t.identity !== "Unknown") ? `${t.identity}${t.staff_id ? ' ('+t.staff_id+')' : ''}` : "Person #" + t.id;
-            return `
-        <div class="person-card">
-          <div class="person-card-header">
-            <div class="person-id-badge">${t.id}</div>
-            <div class="person-card-name">${identityStr}</div>
+          <div style="width: 1px; height: 24px; background: var(--border-light); margin: 0 var(--s-2);"></div>
+          <div class="topbar-search" style="flex: 0 1 400px; margin-right: auto;">
+            <i data-lucide="search"
+              style="position: absolute; left: var(--s-4); top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-tertiary);"></i>
+            <input type="search" id="global-search" name="gs" class="search-input"
+              placeholder="Search for people, logs, or events..." autocomplete="new-password">
           </div>
-          ${t.emotion ? `<div class="person-detail">
-            <span>😊</span>
-            <span class="emotion-chip">${t.emotion}</span>
-          </div>` : ''}
-          ${t.action ? `<div class="person-detail">
-            <span>🎬</span>
-            <span class="action-chip ${isAlert ? 'alert' : ''}">${t.action}</span>
-          </div>` : ''}
-        </div>`;
-          }).join('');
+        </div>
+
+        <div class="topbar-actions">
+          <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme">
+            <i id="theme-icon" data-lucide="sun"></i>
+          </button>
+          <button class="icon-btn" title="Notifications">
+            <i data-lucide="bell"></i>
+          </button>
+          <div style="width: 1px; height: 24px; background: var(--border-light); margin: 0 var(--s-2);"></div>
+          <a href="/settings" class="icon-btn" title="Settings">
+            <i data-lucide="settings"></i>
+          </a>
+        </div>
+      </header>
+
+      <div class="page-body">
+        <!-- Optional Breadcrumbs can be added here -->
+        <div class="saas-breadcrumbs" id="breadcrumbs">
+          <a href="/" class="breadcrumb-item">
+            <i data-lucide="home" style="width: 14px;"></i>
+            <span>Home</span>
+          </a>
+        </div>
+
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <div id="role-menu-popup" class="role-menu-popup" onclick="event.stopPropagation()"></div>
+
+  <script>
+    // Theme Toggle logic
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      updateThemeIcon(next);
+    }
+
+    function updateThemeIcon(theme) {
+      const icon = document.getElementById('theme-icon');
+      if (theme === 'dark') {
+        icon.setAttribute('data-lucide', 'moon');
+      } else {
+        icon.setAttribute('data-lucide', 'sun');
+      }
+      lucide.createIcons();
+    }
+
+    // Sidebar Toggle
+    function toggleSidebar() {
+      const layout = document.getElementById('app-layout');
+      const isCollapsed = layout.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('sidebar-collapsed', isCollapsed);
+    }
+
+    // Summary Toggle
+    function toggleSummary(id) {
+      const el = document.getElementById(id);
+      const btn = document.querySelector(`[data-summary-id="${id}"]`);
+      if (!el) return;
+      
+      const isHidden = el.classList.toggle('summary-hidden');
+      updateSummaryButton(btn, isHidden);
+      localStorage.setItem(`summary-${id}`, isHidden);
+    }
+
+    function updateSummaryButton(btn, isHidden) {
+      if (!btn) return;
+      const text = btn.querySelector('.btn-text');
+      const icon = btn.querySelector('[data-lucide]');
+      
+      if (isHidden) {
+        if (text) text.textContent = 'Show Summary';
+        if (icon) icon.setAttribute('data-lucide', 'chevron-down');
+      } else {
+        if (text) text.textContent = 'Hide Summary';
+        if (icon) icon.setAttribute('data-lucide', 'chevron-up');
+      }
+      lucide.createIcons();
+    }
+
+    // Breadcrumb Logic
+    function updateBreadcrumbs() {
+      const breadcrumbs = document.getElementById('breadcrumbs');
+      if (!breadcrumbs) return;
+
+      const activePage = '{{ active_page|default("") }}';
+      const subPage = '{{ sub_page|default("") }}';
+
+      const pageMap = {
+        'dashboard': '/',
+        'live': '/live',
+        'members': '/settings/members',
+        'general_movement': '/general-movement',
+        'member_logs': '/member-logs',
+        'attendance': '/attendance',
+        'reports': '/reports',
+        'telegram_notifications': '/telegram/notifications',
+        'telegram': '/telegram',
+        'settings': '/settings'
+      };
+
+      if (activePage && activePage !== 'dashboard') {
+        const sep = document.createElement('span');
+        sep.className = 'breadcrumb-separator';
+        sep.innerHTML = '<i data-lucide="chevron-right" style="width: 12px;"></i>';
+        breadcrumbs.appendChild(sep);
+
+        const item = document.createElement('a');
+        item.className = 'breadcrumb-item' + (subPage ? '' : ' active');
+        if (subPage) {
+          item.href = pageMap[activePage] || '#';
         }
+        item.innerHTML = `<span>${activePage.charAt(0).toUpperCase() + activePage.slice(1).replace('_', ' ')}</span>`;
+        breadcrumbs.appendChild(item);
+      }
 
-        function resetStats() {
-          document.getElementById('stat-persons').textContent = '0';
-          if (document.getElementById('stat-entries')) document.getElementById('stat-entries').textContent = '0';
-          if (document.getElementById('stat-exits')) document.getElementById('stat-exits').textContent = '0';
-          document.getElementById('stat-fps').textContent = '–';
-          const fpsChip = document.getElementById('fps-display');
-          if (fpsChip) fpsChip.textContent = '– FPS';
-          document.getElementById('stat-motion').textContent = '–';
-          document.getElementById('stat-motion').className = 'metric-val';
-          document.getElementById('person-cards').innerHTML =
-            '<div class="no-persons"><div class="no-icon">🧍</div>No persons detected</div>';
+      if (subPage) {
+        const sep = document.createElement('span');
+        sep.className = 'breadcrumb-separator';
+        sep.innerHTML = '<i data-lucide="chevron-right" style="width: 12px;"></i>';
+        breadcrumbs.appendChild(sep);
+
+        const item = document.createElement('a');
+        item.className = 'breadcrumb-item active';
+        item.innerHTML = `<span>${subPage.charAt(0).toUpperCase() + subPage.slice(1).replace('_', ' ')}</span>`;
+        breadcrumbs.appendChild(item);
+      }
+      lucide.createIcons();
+    }
+    updateBreadcrumbs();
+
+    // Summary Toggle Logic
+    function toggleSummary(id) {
+      const el = document.getElementById(id);
+      const btn = document.querySelector(`[data-summary-id="${id}"]`);
+      if (!el) return;
+
+      const isHidden = el.classList.toggle('summary-hidden');
+      localStorage.setItem(`summary_hidden_${id}`, isHidden);
+      updateSummaryButton(btn, isHidden);
+    }
+
+    function updateSummaryButton(btn, isHidden) {
+      if (!btn) return;
+      const text = btn.querySelector('.btn-text');
+      const icon = btn.querySelector('[data-lucide]');
+
+      if (isHidden) {
+        if (text) text.textContent = 'Show Summary';
+        if (icon) icon.setAttribute('data-lucide', 'chevron-down');
+      } else {
+        if (text) text.textContent = 'Hide Summary';
+        if (icon) icon.setAttribute('data-lucide', 'chevron-up');
+      }
+      lucide.createIcons();
+    }
+
+    // Initialize summary states
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('[data-summary-id]').forEach(btn => {
+        const id = btn.getAttribute('data-summary-id');
+        const isHidden = localStorage.getItem(`summary_hidden_${id}`) === 'true';
+        if (isHidden) {
+          const el = document.getElementById(id);
+          if (el) el.classList.add('summary-hidden');
+          updateSummaryButton(btn, true);
         }
-
-        function setSysOnline(on) {
-          const badge = document.getElementById('sys-badge');
-          if (!badge) return;
-          badge.className = 'badge ' + (on ? '' : 'offline');
-          badge.innerHTML = `<div class="pulse ${on ? '' : 'off'}"></div> ${on ? 'Live' : 'Idle'}`;
-        }
-
-        // ─── Theme Management ───
-        function toggleThemeMenu(e) {
-          e.stopPropagation();
-          document.getElementById('theme-dropdown').classList.toggle('active');
-          // Close submenus when main menu toggles
-          document.querySelectorAll('.menu-item-nested').forEach(el => el.classList.remove('open'));
-        }
-
-        function toggleSubmenu(e) {
-          e.stopPropagation();
-          const item = e.currentTarget;
-          item.classList.toggle('open');
-        }
-
-        function setTheme(t) {
-          document.documentElement.setAttribute('data-theme', t);
-          localStorage.setItem('theme', t);
-          document.getElementById('theme-dropdown').classList.remove('active');
-        }
-
-        window.onclick = () => {
-          document.getElementById('theme-dropdown').classList.remove('active');
-        };
-
-        // ─── Event Listeners ──────────────────────────────────────────────────
-        document.addEventListener('DOMContentLoaded', () => {
-          // Base template initialization
-          const sidebarState = localStorage.getItem('sidebar-collapsed');
-          if (sidebarState === 'true') {
-            document.querySelector('.app-layout').classList.add('sidebar-collapsed');
-          }
-        });
-
-        function toggleSidebar() {
-          if (!window.sidebarToggleEnabled) return; // Blocked by setting
-          const layout = document.querySelector('.app-layout');
-          const isCollapsed = layout.classList.toggle('sidebar-collapsed');
-          localStorage.setItem('sidebar-collapsed', isCollapsed);
-        }
-
-        // Mini Sidebar Popover Positioning
-        document.addEventListener('mouseover', (e) => {
-          const group = e.target.closest('.nav-group');
-          if (group && document.querySelector('.app-layout').classList.contains('sidebar-collapsed')) {
-            const sub = group.querySelector('.nav-sub');
-            if (sub) {
-              const rect = group.getBoundingClientRect();
-              sub.style.top = rect.top + 'px';
-            }
-          }
-        });
-      </script>
-<div id="role-menu-popup" class="role-menu-popup" onclick="event.stopPropagation()"></div>
+      });
+    });
+  </script>
 </body>
 
 </html>

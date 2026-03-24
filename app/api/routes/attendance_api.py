@@ -308,7 +308,10 @@ def _fetch_logs_from_table(table_name: str):
                 m.exit_time,
                 m.camera_name as entry_camera_name,
                 m.exit_camera_name,
-                s.staff_id as display_id
+                s.staff_id as display_id,
+                s.phone,
+                s.email,
+                m.confidence_score
             FROM {table_name} m
             LEFT JOIN staff_profiles s ON m.staff_id = s.id
             {where_sql}
@@ -334,7 +337,10 @@ def _fetch_logs_from_table(table_name: str):
                 "merged_image": _member_log_image_url(r['merged_image']),
                 "entry_time": r['entry_time'].strftime("%Y-%m-%d %H:%M:%S") if r['entry_time'] else "-",
                 "exit_time": r['exit_time'].strftime("%Y-%m-%d %H:%M:%S") if r['exit_time'] else "-",
-                "exit_camera_name": r.get('exit_camera_name') or "-"
+                "exit_camera_name": r.get('exit_camera_name') or "-",
+                "phone": r.get('phone') or "-",
+                "email": r.get('email') or "-",
+                "confidence": r['confidence_score'] or 0.0
             })
             
         return jsonify({
@@ -634,7 +640,7 @@ def export_telegram_alerts():
             return Response(
                 csv_data.encode('utf-8-sig'),
                 mimetype="text/csv",
-                headers={"Content-disposition": f"attachment; filename=telegram_alerts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx.csv"}
+                headers={"Content-disposition": f"attachment; filename=telegram_alerts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
             )
             
     except Exception as e:
@@ -643,3 +649,66 @@ def export_telegram_alerts():
     finally:
         conn.close()
 
+@attendance_bp.route('/attendance/<int:record_id>', methods=['GET'])
+@login_required
+def get_attendance_detail(record_id: int):
+    """Get details for a specific attendance record including its activity timeline."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        # 1. Fetch main attendance record
+        cur.execute("""
+            SELECT a.*, s.name as staff_name, s.staff_id as display_id, s.phone, s.email
+            FROM attendance a
+            JOIN staff_profiles s ON a.staff_id = s.id
+            WHERE a.id = %s
+        """, (record_id,))
+        record = cur.fetchone()
+        
+        if not record:
+            return jsonify({"status": "error", "message": "Record not found"}), 404
+            
+        # 2. Fetch timeline from member_timestamp
+        # We find all events for this staff member on the same day as the attendance record
+        cur.execute("""
+            SELECT m.detected_at, m.event_type, m.camera_name, m.image_path
+            FROM member_timestamp m
+            WHERE m.staff_id = %s AND m.detected_at::date = %s
+            ORDER BY m.detected_at ASC
+        """, (record['staff_id'], record['attendance_date']))
+        timeline_rows = cur.fetchall()
+        
+        timeline = []
+        for t in timeline_rows:
+            timeline.append({
+                "time": t['detected_at'].strftime("%H:%M:%S"),
+                "type": t['event_type'] or "DETECTION",
+                "camera_name": t['camera_name'] or "Unknown",
+                "image": _member_log_image_url(t['image_path'])
+            })
+            
+        # Convert date/time fields to strings for JSON
+        result = {
+            "id": record['id'],
+            "staff_id": record['display_id'],
+            "staff_name": record['staff_name'],
+            "phone": record['phone'] or "-",
+            "email": record['email'] or "-",
+            "attendance_date": record['attendance_date'].strftime("%Y-%m-%d"),
+            "first_in_time": record['first_entry_time'].strftime("%Y-%m-%d %H:%M:%S") if record['first_entry_time'] else "-",
+            "last_out_time": record['last_exit_time'].strftime("%Y-%m-%d %H:%M:%S") if record['last_exit_time'] else "-",
+            "status": record['status'],
+            "timeline": timeline,
+            "in_image": _member_log_image_url(record.get('in_image')),
+            "out_image": _member_log_image_url(record.get('out_image')),
+            "in_camera": record.get('camera_name') or "Webcam",
+            "out_camera": record.get('out_camera_name') or "-"
+        }
+        
+        return jsonify(result)
+    except Exception as e:
+        log.error(f"Error in get_attendance_detail: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        conn.close()

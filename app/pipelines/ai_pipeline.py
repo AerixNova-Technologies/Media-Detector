@@ -320,18 +320,18 @@ class AIPipeline(threading.Thread):
             
             # --- 2. YOLO Detection & Tracking (Every Frame) ---
             self._last_detections = self.person_det.track(ai_frame, persist=True)
-            yolo_human = len(self._last_detections) > 0
+            yolo_any = len(self._last_detections) > 0
             
-            if yolo_human:
+            if yolo_any:
                 self._last_yolo_human_time = now
                 if self._frame_idx % 30 == 0: 
                     log.info(f"AI: YOLO found {len(self._last_detections)} persons")
 
-            # Snapshot Logic: Capture for new tracks or if first time seeing human in 5s
-            trigger_snapshot = yolo_human and (now - self._last_motion_time) > 5.0
+            # Snapshot Logic: Capture for new tracks or if first time seeing activity in 5s
+            trigger_snapshot = yolo_any and (now - self._last_motion_time) > 5.0
             
             if trigger_snapshot:
-                log.info(f"Movement Triggered: Watchdog_YOLO_Human={yolo_human}")
+                log.info(f"Movement Triggered: Watchdog_YOLO_Any={yolo_any}")
                 motion_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 motion_filename = f"motion_{self.camera_name.replace(' ', '_')}_{motion_ts}.jpg"
                 motion_dir = os.path.join("static", "uploads", "movement")
@@ -351,7 +351,16 @@ class AIPipeline(threading.Thread):
                     event_type='MOTION_YOLO'
                 )
                 if self._current_frame_motion_id:
-                    update_movement_classification(self._current_frame_motion_id, 'human', 1.0)
+                    # Determine best classification for the snapshot
+                    snapshot_label = "human"
+                    if self._last_detections:
+                        # If any human is in the frame, prioritize 'human', otherwise use the class of the first detection
+                        has_human = any(d[6] == self.person_det.PERSON_CLASS_ID for d in self._last_detections)
+                        if not has_human:
+                            first_cls = self._last_detections[0][6]
+                            snapshot_label = "animal" if first_cls in self.person_det.ANIMAL_CLASS_IDS else "unknown"
+                    
+                    update_movement_classification(self._current_frame_motion_id, snapshot_label, 1.0)
                 self._last_motion_time = now
 
             # 1.5) Object detection (Phone/Food) for rule-based actions
@@ -393,25 +402,38 @@ class AIPipeline(threading.Thread):
                         "recognized": False,    
                         "logged": False,        
                         "identity": "Unknown",  
-                        "staff_id": None,       
-                        "best_frame": None,     
-                        "best_full": None,      
-                        "best_clarity": -1.0,   
-                        "last_log_time": 0,     
-                        "start_time": now,
                         "db_id": None,          
                         "missing_count": 0,     # GRACE PERIOD
-                        "is_accounted": False   # Has it been counted in self.entries?
+                        "is_accounted": False,  # Has it been counted in self.entries?
+                        "obj_type": "human" if track.cls_id == self.person_det.PERSON_CLASS_ID else "animal",
+                        "start_time": now,
+                        "best_clarity": -1.0,
+                        "best_frame": None,
+                        "best_full": None,
+                        "last_log_time": 0,
+                        "track_frame_count": 0,
+                        "id_votes": {"attempts": 0}
                     }
                 
                 td = self.track_data[tid]
                 td["missing_count"] = 0 # Reset grace period
+
+                # RE-EVALUATE CLASSIFICATION (Improve robustness against initial frame flicker)
+                # If we see it's an animal in ANY of the first 15 frames, mark as animal
+                if td.get("track_frame_count", 0) < 15 and track.cls_id != self.person_det.PERSON_CLASS_ID:
+                    if td.get("obj_type") == "human":
+                        log.info(f"AI: Re-classifying Track {tid} from human to animal (Confidence Update)")
+                        td["obj_type"] = "animal"
                 
                 # Increment entries ONLY once per unique STABLE track lifecycle
                 if tid > 0 and not td.get("is_accounted"):
-                    self.entries += 1 
-                    td["is_accounted"] = True
-                    log.info(f"COUNT: Person entering (ID: {tid}). Total: {self.entries}")
+                    if td["obj_type"] == "human":
+                        self.entries += 1 
+                        td["is_accounted"] = True
+                        log.info(f"COUNT: Person entering (ID: {tid}). Total: {self.entries}")
+                    else:
+                        td["is_accounted"] = True # Mark animals as accounted but don't increment human entries
+                        log.info(f"AI: Animal entering (ID: {tid})")
                 
                 current_id = td.get("identity", "Unknown")
                 
@@ -452,7 +474,7 @@ class AIPipeline(threading.Thread):
                     # Log movement (using global imports)
                     identity_name = td.get("identity", "Unknown")
                     s_id = td.get("staff_db_id")
-                    p_type = "staff" if identity_name != "Unknown" else "unknown"
+                    p_type = td["obj_type"] if identity_name == "Unknown" else "staff"
                     
                     mv_id = log_movement(
                         camera_id=self.camera_name,
@@ -465,8 +487,8 @@ class AIPipeline(threading.Thread):
                     )
                     if mv_id:
                         td["movement_id"] = mv_id
-                        # Auto-classify as human since it's from a person track
-                        update_movement_classification(mv_id, 'human', 1.0)
+                        # Use the track's object type for classification
+                        update_movement_classification(mv_id, td["obj_type"], 1.0)
 
                 if len(td["frames"]) < 50:
                     clarity = self._calculate_clarity(ai_frame, bbox)
@@ -476,7 +498,8 @@ class AIPipeline(threading.Thread):
                     
                     if crop.size > 0:
                         td["frames"].append({"clarity": clarity})
-                        if clarity > td["best_clarity"]:
+                        best_c = td.get("best_clarity", -1.0)
+                        if clarity > best_c:
                             td["best_clarity"] = clarity
                             td["best_frame"] = crop.copy() # Face/Person crop
                             # Store full frame with a box for context
@@ -486,13 +509,13 @@ class AIPipeline(threading.Thread):
                             td["best_bbox"] = bbox
 
                 # B. Recognition Trigger (PROACTIVE: Try early, try often)
-                is_much_better = td["best_clarity"] > (td.get("last_trigger_clarity", 0) * 1.5)
+                is_much_better = td.get("best_clarity", -1.0) > (td.get("last_trigger_clarity", 0) * 1.5)
                 
-                num_frames = len(td["frames"])
-                should_trigger = not td["recognized"] and (
+                num_frames = len(td.get("frames", []))
+                should_trigger = not td.get("recognized") and (
                     num_frames == 1 or            # IMMEDIATE: Try once as soon as person enters
                     num_frames % 5 == 0 or        # PERIODIC: Retry every 5 frames if still unknown
-                    td["best_clarity"] > 400      # HIGH QUALITY: Force retry if we found a super sharp frame
+                    td.get("best_clarity", -1.0) > 400      # HIGH QUALITY: Force retry if we found a super sharp frame
                 )
                 
                 # Throttle: Only trigger again if we haven't tried in 2s OR if we found a MUCH sharper frame
@@ -515,7 +538,8 @@ class AIPipeline(threading.Thread):
 
                 # D. Entry Logging (IMMEDIATE: Log first, name later)
                 # We log as soon as we have 1 stable frame to ensure the table is updated first
-                if not td["logged"] and len(td["frames"]) >= 1:
+                # ONLY log in Member Logs (log_person) if it's a HUMAN track
+                if not td["logged"] and len(td["frames"]) >= 1 and td["obj_type"] == "human":
                     # STRICT CLARITY: User wants clear photos, but 100 is a safe floor
                     if td["best_clarity"] < 100:
                         log.debug(f"AI: Skipping Entry log for Track {tid} - Low Clarity ({td['best_clarity']:.1f})")
@@ -573,17 +597,13 @@ class AIPipeline(threading.Thread):
                         
                         td["logged"] = True
                         log.info(f"AI: Logged {person_type} Entry for Track {tid} ({current_id})")
-
-            # ── EXIT HANDLING (With 30-frame Grace Period) ──
-            # self._active_ids contains IDs from PREVIOUS frame
+            # ── EXIT HANDLING (With 15-frame Grace Period) ──
             for tid in list(self._active_ids):
                 if tid not in active_ids:
                     td = self.track_data.get(tid)
                     if not td: continue
                     
                     td["missing_count"] += 1
-                    # Only confirm exit after 15 frames of silence (approx 1s)
-                    # Lowered from 30 to 15 to handle rapid in/out testing better
                     if td["missing_count"] > 15:
                         self.exits += 1
                         if td["logged"]:
@@ -610,11 +630,10 @@ class AIPipeline(threading.Thread):
                                     exit_camera_name=self.camera_name,
                                     exit_camera_id=self.camera_name
                                 )
-                                log.info(f"AI: Logged Formal Exit for Track {tid} (Evidence: {exit_image_path}) on Exit Camera")
+                                log.info(f"AI: Logged Formal Exit for Track {tid} on Exit Camera")
                             else:
-                                log.info(f"AI: Track {tid} disappeared, but Camera {self.camera_name} is NOT an Exit role. Skipping formal logs.")
+                                log.info(f"AI: Track {tid} disappeared, Camera {self.camera_name} is NOT an Exit role.")
                         
-                        # Cleanup memory
                         del self.track_data[tid]
             
             # Combine current detection IDs + grace-period IDs for persistence
@@ -680,7 +699,8 @@ class AIPipeline(threading.Thread):
                 
                 # 3. Geometric Fallback (Sleeping/Sitting)
                 if not action:
-                    bx1, by1, bx2, by2 = bbox
+                    bx1, by1, bx2, by2 = (max(0, int(v)) for v in bbox)
+                    bx2, by2 = min(ai_w, bx2), min(ai_h, by2)
                     bw, bh = max(1, bx2 - bx1), max(1, by2 - by1)
                     ratio = bw / bh
                     if ratio > 1.4:    geometry_label = "😴 sleeping"
@@ -706,6 +726,8 @@ class AIPipeline(threading.Thread):
                     else:            action = geometry_label
 
                 if AI_TOGGLES.get("emotion", True):
+                    bx1, by1, bx2, by2 = (max(0, int(v)) for v in bbox)
+                    bx2, by2 = min(ai_w, bx2), min(ai_h, by2)
                     person_crop = ai_frame[by1:by2, bx1:bx2]
                     if person_crop.size > 0: self._submit_emotion(person_crop, tid)
                     emotion = self.emotion_det._cache.get(tid, "")
@@ -719,7 +741,8 @@ class AIPipeline(threading.Thread):
                         is_unknown = (identity == "" or identity == "Unknown")
                         active_rec_tasks = sum(1 for f in self._rec_futures.values() if not f.done())
                         # Re-verify every 100 frames (approx 3-5 seconds) even if already recognized
-                        if (is_unknown or (self._frame_idx % 100 == 0)) and active_rec_tasks < 2:
+                        # ONLY for human tracks
+                        if td["obj_type"] == "human" and (is_unknown or (self._frame_idx % 100 == 0)) and active_rec_tasks < 2:
                             self._submit_rec(ai_frame, bbox, tid)
                         
                         # NON-BLOCKING TELEGRAM: Run in executor so YOLO doesn't stop
@@ -746,6 +769,9 @@ class AIPipeline(threading.Thread):
                     for tid in list(d):
                         if tid not in active_ids: d.pop(tid, None)
 
+            # Final Step: Update state for next frame
+            self._active_ids = active_ids
+
             return AIResult(motion=motion, motion_mask=mask, tracks=track_results, 
                         entries=self.entries, exits=self.exits)
 
@@ -768,14 +794,3 @@ class AIPipeline(threading.Thread):
         inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
         union_area = (x2-x1)*(y2-y1) + (x4-x3)*(y4-y3) - inter_area
         return inter_area / union_area if union_area > 0 else 0
-
-    def _calculate_clarity(self, frame, bbox):
-        """Calculate image sharpess using Laplacian variance."""
-        try:
-            bx1, by1, bx2, by2 = (int(v) for v in bbox)
-            crop = frame[by1:by2, bx1:bx2]
-            if crop.size == 0: return 0
-            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            return cv2.Laplacian(gray, cv2.CV_64F).var()
-        except Exception:
-            return 0

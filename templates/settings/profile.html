@@ -3,45 +3,71 @@
 {% set sub_page = 'profile' %}
 
 {% block content %}
-<div style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-<div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-
-  <h2 class="s-mod-title">My Profile</h2>
-  <p class="s-mod-sub">View your system identity and company information.</p>
-  
-    <div style="max-width:560px; margin-top:28px;">
-      <div class="s-field"><label>Full Name</label><input type="text" id="profile-name" readonly /></div>
-      <div class="s-field"><label>Email Address</label><input type="text" id="profile-email" readonly /></div>
-      <div class="s-field"><label>Company / Organization</label><input type="text" id="profile-company" readonly /></div>
-      <div class="s-field"><label>User Role</label><input type="text" id="profile-role" readonly /></div>
+<div class="page-wrap">
+    <!-- Header with Back Button -->
+    <div style="margin-bottom: var(--s-8);">
+        <h1 class="heading" style="font-size: 28px; color: var(--text-primary); display: flex; align-items: center; gap: var(--s-3);">
+            <i data-lucide="user-circle" style="color: var(--accent);"></i>
+            Personnel Profile
+        </h1>
+        <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">
+            Identity and organizational metadata assigned to your system account.
+        </p>
     </div>
 
-</div>
-</div>
+    <!-- Profile Details Card -->
+    <div class="saas-card" style="max-width: 600px; padding: var(--s-8);">
+        <div style="display: flex; flex-direction: column; gap: var(--s-6);">
+            <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                <label class="heading" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);">Full Identity</label>
+                <input type="text" id="profile-name" class="saas-input" placeholder="Loading..." readonly>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                <label class="heading" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);">Email Uplink Address</label>
+                <input type="text" id="profile-email" class="saas-input" placeholder="Loading..." readonly>
+            </div>
 
-<style>
-.s-back { display:inline-block; background:none; border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; margin-bottom: 24px; transition: all 0.2s; text-decoration:none; }
-.s-back:hover { border-color: var(--accent); color: var(--accent); }
-.s-mod-title { font-size: 22px; font-weight: 800; color: var(--text); margin:0 0 6px 0; }
-.s-mod-sub { font-size: 13px; color: var(--muted); margin:0; }
-.s-field { margin-bottom: 18px; }
-.s-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-.s-field input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; color: var(--text); background: var(--surface2); outline: none; }
-</style>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
+                <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                    <label class="heading" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);">Organization</label>
+                    <input type="text" id="profile-company" class="saas-input" placeholder="Loading..." readonly>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                    <label class="heading" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);">System Role</label>
+                    <input type="text" id="profile-role" class="saas-input" placeholder="Loading..." readonly>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: var(--s-8); padding: var(--s-4); background: var(--bg-surface-alt); border-radius: var(--radius-md); border: 1px solid var(--border-light); display: flex; gap: var(--s-3); align-items: flex-start;">
+            <i data-lucide="shield-check" style="color: var(--success); width: 18px; flex-shrink: 0; margin-top: 2px;"></i>
+            <div style="font-size: 12px; color: var(--text-tertiary); line-height: 1.5;">
+                Account managed via Central Directory Services. Please contact your administrator to update organizational metadata or role assignments.
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
-  document.addEventListener('DOMContentLoaded', loadUserProfile);
+  document.addEventListener('DOMContentLoaded', () => {
+    loadUserProfile();
+    lucide.createIcons();
+  });
+  
   async function loadUserProfile() {
     try {
       const res = await fetch('/api/user_profile');
       const data = await res.json();
       if (!data.error) {
-        document.getElementById('profile-name').value = data.name||'';
-        document.getElementById('profile-email').value = data.email||'';
-        document.getElementById('profile-company').value = data.company||'';
-        document.getElementById('profile-role').value = data.role||'';
+        document.getElementById('profile-name').value = data.name || '-';
+        document.getElementById('profile-email').value = data.email || '-';
+        document.getElementById('profile-company').value = data.company || '-';
+        document.getElementById('profile-role').value = data.role || 'Personnel';
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Profile Link Failure:", e);
+    }
   }
 </script>
 {% endblock %}

@@ -1,130 +1,131 @@
 {% extends "base.html" %}
-{% set active_page = 'telegram_notifications' %}
+{% set active_page = 'telegram' %}
+{% set sub_page = 'notifications' %}
 
 {% block content %}
-<div style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-  <div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-    <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;">
-      <div>
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
-          <span style="font-size:26px;">✈️</span>
-          <h1 style="font-size:24px; font-weight:800; color: var(--text); margin:0;">Telegram Notification</h1>
+<div class="page-wrap">
+    <!-- Page Header -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: var(--s-8);">
+        <div>
+            <h1 class="heading" style="font-size: 28px; color: var(--text-primary); display: flex; align-items: center; gap: var(--s-3);">
+                <i data-lucide="bell-ring" style="color: var(--accent);"></i>
+                Telegram Audit Log
+            </h1>
+            <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">
+                Complete history of automated telegram notifications and alert status.
+            </p>
         </div>
-        <p style="font-size:14px; color: var(--muted); margin:0;">Complete history of automated telegram notifications</p>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <!-- All / Today Segmented Control -->
-        <div class="period-toggle">
-          <button id="period-all" class="toggle-btn active" onclick="setPeriod('all')">All</button>
-          <button id="period-today" class="toggle-btn" onclick="setPeriod('today')">Today</button>
+        <div style="display: flex; align-items: center; gap: var(--s-3);">
+            <div style="display: flex; background: var(--bg-surface-alt); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-main);">
+                <button id="period-all" class="nav-pill active" onclick="setPeriod('all')">All Time</button>
+                <button id="period-today" class="nav-pill" onclick="setPeriod('today')">Today</button>
+            </div>
+            <button class="saas-btn btn-secondary" onclick="toggleSummary('telegram-summary')" data-summary-id="telegram-summary">
+                <i data-lucide="chevron-up" style="width: 16px;"></i>
+                <span class="btn-text">Hide Summary</span>
+            </button>
+            <button class="saas-btn btn-primary" onclick="exportTelegramLogs()">
+                <i data-lucide="download" style="width: 16px;"></i> Export Data
+            </button>
+            <button class="saas-btn btn-secondary" onclick="location.reload()">
+                <i data-lucide="refresh-cw" style="width: 16px;"></i> Refresh
+            </button>
         </div>
-        <button id="toggle-telegram-summary-btn" class="secondary-btn" onclick="toggleTelegramSummary()"><span>⌃</span> Hide Summary</button>
-        <button class="secondary-btn" onclick="loadAlerts()"><span>🔄</span> Refresh</button>
-      </div>
     </div>
 
-    <!-- Summary Cards -->
-    <div id="telegram-summary" style="display:grid; grid-template-columns:repeat(3,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
-      <div class="log-card"><div class="log-label">Total Alerts</div><div class="log-value" id="count-total">0</div></div>
-      <div class="log-card"><div class="log-label">Successful (Sent)</div><div class="log-value" id="count-sent">0</div></div>
-      <div class="log-card"><div class="log-label">Failed</div><div class="log-value" id="count-failed">0</div></div>
-    </div>
-
-    <!-- Filters -->
-    <div class="log-filter-row">
-      <div class="log-search-wrap" style="position:relative; min-width:0; flex:1; max-width:400px;">
-        <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
-        <input id="alert-search" type="text" class="log-input" placeholder="Search by message or camera..." style="padding-left:36px;" oninput="debouncedLoadAlerts()" />
-      </div>
-      <div class="log-filter-group" id="date-range-container" style="min-width:240px;">
-        <div class="log-range-wrap">
-          <span style="font-size:15px;">📅</span>
-          <input id="alert-date-range" type="text" class="log-input" readonly placeholder="Pick a date range" />
+    <!-- Summary Statistics -->
+    <div id="telegram-summary" class="summary-container">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); margin-bottom: var(--s-8);">
+            <div class="saas-card">
+                <div class="card-header">
+                    <span class="card-title">Total Dispatched</span>
+                    <i data-lucide="send" style="color: var(--accent); width: 18px;"></i>
+                </div>
+                <div id="count-total" class="heading" style="font-size: 28px;">0</div>
+            </div>
+            <div class="saas-card">
+                <div class="card-header">
+                    <span class="card-title">Successfully Delivered</span>
+                    <i data-lucide="check-circle" style="color: var(--success); width: 18px;"></i>
+                </div>
+                <div id="count-sent" class="heading" style="font-size: 28px;">0</div>
+            </div>
+            <div class="saas-card">
+                <div class="card-header">
+                    <span class="card-title">Delivery Failures</span>
+                    <i data-lucide="alert-circle" style="color: var(--error); width: 18px;"></i>
+                </div>
+                <div id="count-failed" class="heading" style="font-size: 28px;">0</div>
+            </div>
         </div>
-      </div>
-      <button class="secondary-btn" onclick="exportTelegramLogs()" style="white-space:nowrap; padding: 9px 16px;"><span>📥</span> Export Logs</button>
     </div>
 
-    <!-- Alerts Table -->
-    <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background: var(--surface);">
-      <table style="width:100%; border-collapse:collapse;">
-        <thead style="background: var(--surface2);">
-          <tr>
-            <th class="log-th" style="width:80px;">Track ID</th>
-            <th class="log-th">Camera</th>
-            <th class="log-th">Action</th>
-            <th class="log-th summary-col">Message Snippet</th>
-            <th class="log-th">Status</th>
-            <th class="log-th">Chat ID</th>
-            <th class="log-th">Time</th>
-            <th class="log-th" style="width:60px; text-align:center;">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="alerts-table-body">
-          <tr><td colspan="8" class="log-empty">Initializing alerts...</td></tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- Table & Filters Container -->
+    <div class="saas-card" style="padding: 0; overflow: hidden; margin-bottom: var(--s-6);">
+        <!-- Filters Bar -->
+        <div style="padding: var(--s-4) var(--s-6); border-bottom: 1px solid var(--border-main); background: var(--bg-surface-alt); display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px; position: relative;">
+                <i data-lucide="search" style="position: absolute; left: var(--s-4); top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-tertiary);"></i>
+                <input id="alert-search" type="search" class="saas-input" placeholder="Search by message or camera..." style="padding-left: var(--s-10);" oninput="debouncedLoadAlerts()" autocomplete="new-password">
+            </div>
+            
+            <div id="date-range-container" style="flex: 1; min-width: 200px; position: relative;">
+                <i data-lucide="calendar" style="position: absolute; left: var(--s-4); top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-tertiary);"></i>
+                <input id="alert-date-range" type="text" class="saas-input" style="padding-left: var(--s-10);" readonly placeholder="Select Interval">
+            </div>
+        </div>
 
-    <!-- Pagination -->
-    <div id="alerts-pagination" style="margin-top:16px; padding:12px 14px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
+        <!-- Data Table -->
+        <div style="overflow-x: auto;">
+            <table class="saas-table">
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Track ID</th>
+                        <th>Camera Source</th>
+                        <th>Action</th>
+                        <th>Status</th>
+                        <th>Chat Target</th>
+                        <th>Timestamp</th>
+                        <th style="width: 60px; text-align: center;">Details</th>
+                    </tr>
+                </thead>
+                <tbody id="alerts-table-body">
+                    <tr><td colspan="7" style="text-align: center; padding: var(--s-12); color: var(--text-tertiary);">Initializing secure session...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="alerts-pagination" style="padding: var(--s-4) var(--s-6); border-top: 1px solid var(--border-main); background: var(--bg-surface-alt); display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text-tertiary);">
+        </div>
     </div>
-  </div>
 </div>
 
 <!-- Details Modal -->
-<div id="details-modal" class="modal-overlay" onclick="closeDetailsModal()">
-  <div class="modal-content-details" onclick="event.stopPropagation()" style="max-width: 600px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:20px; border-bottom:1px solid var(--border);">
-      <h2 style="margin:0; font-size:18px;">Alert Message Details</h2>
-      <button class="close-btn" onclick="closeDetailsModal()">✕</button>
+<div id="details-modal" class="modal-overlay">
+    <div class="saas-card" style="max-width: 600px; width: 95%; padding: 0; overflow: hidden; animation: scaleIn 0.3s ease;">
+        <div style="padding: var(--s-5) var(--s-6); border-bottom: 1px solid var(--border-main); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-alt);">
+            <h3 class="heading" style="font-size: 18px;">Alert Message Content</h3>
+            <button class="icon-btn" onclick="closeDetailsModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div style="padding: var(--s-8);">
+            <div id="modal-message-text" style="background: var(--bg-input); padding: var(--s-4); border-radius: var(--radius-md); border: 1px solid var(--border-main); font-family: 'JetBrains Mono'; font-size: 13px; white-space: pre-wrap; color: var(--text-primary);"></div>
+            <div style="margin-top: var(--s-6); display: flex; justify-content: flex-end;">
+                <button class="saas-btn btn-secondary" onclick="closeDetailsModal()">Close Detail</button>
+            </div>
+        </div>
     </div>
-    <div style="padding:24px;">
-       <div style="background: var(--bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: pre-wrap;" id="modal-message-text"></div>
-       <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
-         <button class="secondary-btn" onclick="closeDetailsModal()">Close</button>
-       </div>
-    </div>
-  </div>
 </div>
 
 <style>
-  .log-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; outline: none; transition: border-color 0.2s; }
-  .log-input:focus { border-color: var(--accent); }
-  .log-filter-row { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:nowrap; }
-  .log-filter-group { display:flex; flex-direction:column; }
-  .log-range-wrap { display:flex; align-items:center; gap:8px; border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:0 10px; }
-  .log-range-wrap .log-input { border:none; background:transparent; padding:9px 0; cursor:pointer; }
-  .log-th { text-align:left; font-size:12px; color: var(--muted); padding: 12px 14px; border-bottom:1px solid var(--border); text-transform: uppercase; font-weight:700; }
-  .log-td { padding: 12px 14px; font-size: 13px; color: var(--text); border-bottom:1px solid var(--border); }
-  .log-empty { padding: 30px; text-align:center; color: var(--muted); font-size: 13px; }
-  
-  .log-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
-  .log-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .log-value { font-size: 24px; color: var(--text); font-weight: 800; line-height: 1; }
-
-  /* Segmented Control */
-  .period-toggle { display: flex; background: var(--surface2); padding: 4px; border-radius: 10px; border: 1px solid var(--border); }
-  .toggle-btn { border: none; background: transparent; padding: 6px 16px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-radius: 7px; transition: all 0.2s; }
-  .toggle-btn.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
-
-  .badge-status { display:inline-block; font-size: 11px; font-weight:700; border-radius: 6px; padding: 4px 10px; text-transform: uppercase; }
-  .status-sent { background: var(--success-bg); color: var(--green); }
-  .status-failed { background: #fee2e2; color: #ef4444; }
-
-  /* 3-dot Menu */
-  .actions-btn { background:transparent; border:none; color:var(--muted); font-size:18px; padding:4px 8px; cursor:pointer; border-radius:6px; transition: all 0.2s; }
-  .actions-btn:hover { background: var(--bg); color: var(--text); }
-
-  .clickable-row { transition: background 0.2s; cursor:pointer; }
-  .clickable-row:hover { background: var(--surface2); }
-  
-  /* Modal Overlay */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 40px; }
-  .modal-overlay.active { display: flex; }
-  .modal-content-details { background: var(--surface); border-radius: 16px; width: 500px; max-width: 95vw; box-shadow: var(--shadow-lg); }
-  .close-btn { background: none; border: none; font-size: 20px; color: var(--muted); cursor: pointer; transition: color 0.2s; }
-  .close-btn:hover { color: var(--text); }
+/* Page Specific Overrides */
+.log-th { text-align: left; font-size: 12px; color: var(--text-tertiary); padding: var(--s-4); border-bottom: 2px solid var(--border-main); text-transform: uppercase; font-weight: 700; letter-spacing: 0.1em; }
+.log-td { padding: var(--s-4); font-size: 13px; color: var(--text-primary); border-bottom: 1px solid var(--border-main); }
+.status-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.status-sent { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+.status-failed { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+.nav-pill { padding: 6px 14px; border-radius: var(--radius-md); border: none; background: transparent; color: var(--text-tertiary); font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 12px; }
+.nav-pill.active { background: var(--bg-surface); color: var(--accent); box-shadow: var(--shadow-sm); }
 </style>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -135,14 +136,12 @@
   let alertCurrentPage = 1;
   let alertPageSize = 20;
   let alertPeriod = 'all';
-  let telegramSummaryVisible = true;
 
   function setPeriod(p) {
     alertPeriod = p;
-    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.nav-pill').forEach(b => b.classList.remove('active'));
     document.getElementById(`period-${p}`).classList.add('active');
     
-    // Disable date picker if today is active
     const rangeCont = document.getElementById('date-range-container');
     const rangeInput = document.getElementById('alert-date-range');
     if (p === 'today') {
@@ -173,26 +172,11 @@
 
   function openMessageModal(text) {
     document.getElementById('modal-message-text').textContent = text;
-    document.getElementById('details-modal').classList.add('active');
+    document.getElementById('details-modal').style.display = 'flex';
   }
 
   function closeDetailsModal() {
-    document.getElementById('details-modal').classList.remove('active');
-  }
-
-
-  function toggleTelegramSummary() {
-    telegramSummaryVisible = !telegramSummaryVisible;
-    const section = document.getElementById('telegram-summary');
-    const btn = document.getElementById('toggle-telegram-summary-btn');
-    section.style.display = telegramSummaryVisible ? 'grid' : 'none';
-    btn.innerHTML = telegramSummaryVisible ? '<span>⌃</span> Hide Summary' : '<span>⌄</span> Show Summary';
-  }
-
-  function toggleSummaryColumn() {
-    // Keep this function but hide summary column if needed via JS elsewhere or legacy
-    const cols = document.querySelectorAll('.summary-col');
-    // For now we don't need a checkbox for this if we use the top summary cards
+    document.getElementById('details-modal').style.display = 'none';
   }
 
   function getDateRange() {
@@ -212,130 +196,111 @@
     loadAlerts();
   }
 
-  function renderPagination(pagination) {
-    const container = document.getElementById('alerts-pagination');
-    if (!container) return;
-    
-    if (!pagination || pagination.total === 0) {
-      container.innerHTML = '';
-      return;
-    }
+  function renderPagination(p) {
+    const cont = document.getElementById('alerts-pagination');
+    if (!cont) return;
+    if (!p || p.total === 0) { cont.innerHTML = ''; return; }
 
-    const start = (pagination.page - 1) * pagination.limit + 1;
-    const end = Math.min(pagination.page * pagination.limit, pagination.total);
+    const start = (p.page - 1) * p.limit + 1;
+    const end = Math.min(p.page * p.limit, p.total);
 
-    container.innerHTML = `
+    cont.innerHTML = `
       <div style="display:flex; align-items:center; gap:16px;">
-        <span>Showing ${start} - ${end} of ${pagination.total} alerts</span>
+        <span>Showing <strong>${start} - ${end}</strong> of <strong>${p.total}</strong> alerts</span>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span>Rows per page:</span>
-          <select class="log-input" style="width:78px; padding:4px 6px;" onchange="setPageSize(this.value)">
+          <span style="font-size:11px;">SCALE:</span>
+          <select class="saas-input" style="width:70px; height:28px; font-size:11px; padding:0 8px;" onchange="setPageSize(this.value)">
             <option value="10" ${alertPageSize===10?'selected':''}>10</option>
             <option value="20" ${alertPageSize===20?'selected':''}>20</option>
             <option value="50" ${alertPageSize===50?'selected':''}>50</option>
           </select>
         </div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span style="margin-right:6px;">Page ${pagination.page} / ${pagination.pages}</span>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(1)" ${alertCurrentPage === 1 ? 'disabled' : ''}>«</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(${alertCurrentPage - 1})" ${alertCurrentPage === 1 ? 'disabled' : ''}>‹</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(${alertCurrentPage + 1})" ${alertCurrentPage === pagination.pages ? 'disabled' : ''}>›</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changePage(${pagination.pages})" ${alertCurrentPage === pagination.pages ? 'disabled' : ''}>»</button>
+      <div style="display:flex; align-items:center; gap:var(--s-4);">
+        <span>Page ${p.page} / ${p.pages}</span>
+        <div style="display:flex; gap:8px;">
+            <button class="pagination-btn" onclick="changePage(1)" ${alertCurrentPage===1?'disabled':''}><i data-lucide="chevrons-left" style="width:14px;"></i></button>
+            <button class="pagination-btn" onclick="changePage(${alertCurrentPage-1})" ${alertCurrentPage===1?'disabled':''}><i data-lucide="chevron-left" style="width:14px;"></i></button>
+            <button class="pagination-btn" onclick="changePage(${alertCurrentPage+1})" ${alertCurrentPage===p.pages?'disabled':''}><i data-lucide="chevron-right" style="width:14px;"></i></button>
+            <button class="pagination-btn" onclick="changePage(${p.pages})" ${alertCurrentPage===p.pages?'disabled':''}><i data-lucide="chevrons-right" style="width:14px;"></i></button>
+        </div>
       </div>
     `;
-  }
-
-  function exportTelegramLogs() {
-    const q = document.getElementById('alert-search').value.trim();
-    const { from, to } = getDateRange();
-    
-    const params = new URLSearchParams({ period: alertPeriod });
-    if (q) params.append('q', q);
-    if (from) params.append('date_from', from + ' 00:00:00');
-    if (to) params.append('date_to', to + ' 23:59:59');
-    
-    window.location.href = `/api/telegram-alerts/export?${params.toString()}`;
-  }
-
-  function changePage(page) {
-    alertCurrentPage = page;
-    loadAlerts();
+    lucide.createIcons();
   }
 
   async function loadAlerts() {
     const q = document.getElementById('alert-search').value.trim();
     const { from, to } = getDateRange();
     
-    const params = new URLSearchParams({
-      page: alertCurrentPage,
-      page_size: alertPageSize,
-      period: alertPeriod
-    });
+    const params = new URLSearchParams({ page: alertCurrentPage, page_size: alertPageSize, period: alertPeriod });
     if (q) params.append('q', q);
     if (from) params.append('date_from', from + ' 00:00:00');
     if (to) params.append('date_to', to + ' 23:59:59');
 
     const tbody = document.getElementById('alerts-table-body');
-    tbody.innerHTML = '<tr><td colspan="8" class="log-empty">Loading records...</td></tr>';
-
     try {
       const res = await fetch(`/api/telegram-alerts?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to load alerts");
-      
       const result = await res.json();
-      if (result.status !== 'success') throw new Error(result.message || 'Failed to load alerts');
+      if (result.status !== 'success') throw new Error(result.message);
 
       const data = result.data;
-      const pagination = result.pagination;
+      const p = result.pagination;
 
       if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="log-empty">No telegram alerts found for the selected filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="padding: 40px; text-align: center; color: var(--text-tertiary);">No telegram alerts identified for the selected parameters.</td></tr>';
       } else {
         tbody.innerHTML = data.map(alert => {
-          const msgSnippet = alert.message_text.length > 50 ? alert.message_text.substring(0, 50) + '...' : alert.message_text;
-          const statusLower = (alert.status || '').toLowerCase();
-          const statusClass = statusLower === 'sent' ? 'status-sent' : 'status-failed';
-          const alertJson = JSON.stringify(alert).replace(/'/g, "&apos;");
+          const isSent = (alert.status || '').toLowerCase() === 'sent';
           return `
             <tr class="clickable-row">
-              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)"><span style="font-family:monospace; font-weight:600; color:var(--accent);">#${alert.track_id || '-'}</span></td>
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
+                <span style="font-family: 'JetBrains Mono'; font-weight: 600; color: var(--accent);">#${alert.track_id || '-'}</span>
+              </td>
               <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${alert.camera_name || '-'}</td>
               <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${alert.action || '-'}</td>
-              <td class="log-td summary-col" style="font-size:12px; color:var(--muted);" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${msgSnippet}</td>
               <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
-                <span class="badge-status ${statusClass}">${alert.status}</span>
+                <span class="status-badge ${isSent ? 'status-success' : 'status-error'}">${alert.status}</span>
               </td>
-              <td class="log-td" style="font-size:11px; color:var(--muted); max-width:150px; overflow:hidden; text-overflow:ellipsis;" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">${alert.chat_id || '-'}</td>
-              <td class="log-td" style="white-space:nowrap;" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
-                <div style="font-weight:500;">${alert.timestamp.split(' ')[0]}</div>
-                <div style="font-size:11px; color:var(--muted); margin-top:2px;">${alert.timestamp.split(' ')[1]}</div>
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)"><span style="font-size: 11px; opacity: 0.7;">${alert.chat_id || '-'}</span></td>
+              <td class="log-td" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">
+                <div style="font-weight:500; font-size: 13px;">${alert.timestamp.split(' ')[1]}</div>
+                <div style="font-size:10px; color:var(--text-tertiary);">${alert.timestamp.split(' ')[0]}</div>
               </td>
-              <td class="log-td" style="text-align:center;">
-                <button class="actions-btn" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)">⋮</button>
+              <td style="text-align: center;">
+                <button class="icon-btn" onclick="openMessageModal(\`${alert.message_text.replace(/`/g, '\\`')}\`)"><i data-lucide="eye"></i></button>
               </td>
             </tr>
           `;
         }).join('');
       }
 
-      // Update counters
-      document.getElementById('count-total').textContent = result.counts ? result.counts.total : pagination.total;
+      document.getElementById('count-total').textContent = result.counts ? result.counts.total : p.total;
       document.getElementById('count-sent').textContent = result.counts ? result.counts.sent : '-';
       document.getElementById('count-failed').textContent = result.counts ? result.counts.failed : '-';
-
-      renderPagination(pagination);
-
+      renderPagination(p);
+      lucide.createIcons();
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="8" class="log-empty" style="color:#ef4444;">Error: ${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="padding: 40px; text-align: center; color: var(--error);">Uplink Failure: ${e.message}</td></tr>`;
     }
+  }
+
+  function changePage(page) { alertCurrentPage = page; loadAlerts(); }
+  function exportTelegramLogs() {
+    const q = document.getElementById('alert-search').value.trim();
+    const { from, to } = getDateRange();
+    const params = new URLSearchParams({ period: alertPeriod });
+    if (q) params.append('q', q);
+    if (from) params.append('date_from', from);
+    if (to) params.append('date_to', to);
+    window.location.href = '/api/telegram-alerts/export?' + params.toString();
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     flatpickr("#alert-date-range", {
       mode: "range",
       dateFormat: "Y-m-d",
-      onClose: () => { alertCurrentPage = 1; loadAlerts(); }
+      onClose: () => { resetAndLoad(); }
     });
     loadAlerts();
   });

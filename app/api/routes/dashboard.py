@@ -21,7 +21,11 @@ dashboard_bp = Blueprint("dashboard", __name__)
 @dashboard_bp.route("/")
 @login_required
 def index():
-    return render_template("dashboard.html")
+    from app.api.routes.camera import get_all_cameras
+    from flask import session
+    user_email = session.get("user")
+    cameras = get_all_cameras(user_email=user_email)
+    return render_template("dashboard.html", cameras=cameras)
 
 
 @dashboard_bp.route("/live")

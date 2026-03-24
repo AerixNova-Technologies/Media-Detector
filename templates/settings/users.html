@@ -3,224 +3,142 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div id="view-users" style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-    <div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-        
-        <!-- Page Header -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
-            <div>
-                {% if sys_settings.show_breadcrumbs == 'true' %}
-                {% endif %}
-                <h1 style="font-size: 24px; font-weight: 800; color: var(--text); margin: 0 0 4px;">Users & Teams</h1>
-                <p style="font-size: 14px; color: var(--muted); margin: 0;">Manage users and their access to your organization</p>
-            </div>
-            <div style="display: flex; gap: 12px; align-items: center;">
-                <div style="position: relative;">
-                    <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 16px; height: 16px; pointer-events: none;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                    <input type="text" id="user-search" placeholder="Search users by name, email, or company..." oninput="handleSearch(this.value)" style="padding: 10px 10px 10px 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; outline: none; width: 280px; transition: border-color 0.2s;">
-                </div>
-                <button onclick="openCreateUserModal()" style="background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                    <span>+</span> Add User
-                </button>
-            </div>
+<style>
+/* Page Specific Overrides */
+.user-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; background: var(--bg-surface-alt); border: 1px solid var(--border-main); color: var(--accent); }
+</style>
+
+<div class="page-wrap">
+    <!-- Page Header -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: var(--s-8);">
+        <div>
+            <h1 class="heading" style="font-size: 28px; color: var(--text-primary); display: flex; align-items: center; gap: var(--s-3);">
+                <i data-lucide="users" style="color: var(--accent);"></i>
+                User Directory
+            </h1>
+            <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">Manage system operators and organizational access control.</p>
         </div>
+        <div style="display: flex; gap: var(--s-3);">
+            <div style="position: relative;">
+                <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); width: 16px; pointer-events: none;"></i>
+                <input type="search" id="user-search" class="saas-input" placeholder="Filter by name, email..." oninput="handleSearch(this.value)" style="padding-left: 38px; width: 280px;" autocomplete="new-password">
+            </div>
+            <button class="saas-btn btn-primary" onclick="openCreateUserModal()">
+                <i data-lucide="plus" style="width: 18px;"></i> Provision User
+            </button>
+        </div>
+    </div>
 
-        <!-- User Table -->
-        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: visible;">
-            <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                <thead style="background: var(--surface2); border-bottom: 1px solid var(--border);">
-                    <tr>
-                        <th style="padding: 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase;">User</th>
-                        <th style="padding: 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase;">Email</th>
-                        <th style="padding: 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase;">Role</th>
-                        <th style="padding: 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase;">Status</th>
-                        <th style="padding: 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase;">Last Login</th>
-                        <th style="padding: 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; text-align: right;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="user-table-body">
-                    <!-- Loaded via JS -->
-                </tbody>
-            </table>
+    <!-- User Table Card -->
+    <div class="saas-card" style="padding: 0; overflow: hidden;">
+        <table class="saas-table">
+            <thead>
+                <tr>
+                    <th>Personnel</th>
+                    <th>Email Uplink</th>
+                    <th>Security Role</th>
+                    <th>Status</th>
+                    <th>Last Active</th>
+                    <th style="text-align: right;">Management</th>
+                </tr>
+            </thead>
+            <tbody id="user-table-body">
+                <!-- Loaded via JS -->
+            </tbody>
+        </table>
+        
+        <!-- Pagination Component -->
+        <div style="padding: var(--s-5) var(--s-6); border-top: 1px solid var(--border-main); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-alt);">
+            <div id="pagination-info" style="font-size: 12px; color: var(--text-tertiary); font-weight: 600;">
+                0 accounts identified.
+            </div>
             
-            <!-- Advanced Pagination Controls -->
-            <div id="pagination-wrapper" style="padding: 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg); font-family: 'Inter', sans-serif;">
-                <div id="pagination-info" style="font-size: 13px; color: var(--muted); font-weight: 500;">
-                    0 of 0 row(s) selected.
+            <div style="display: flex; align-items: center; gap: var(--s-8);">
+                <div style="display: flex; align-items: center; gap: var(--s-3);">
+                    <span style="font-size: 12px; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase;">Scale:</span>
+                    <select id="rows-per-page" class="saas-input" onchange="handleLimitChange(this.value)" style="width: 70px; height: 32px; font-size: 12px; padding: 0 8px;">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
                 </div>
-                
-                <div style="display: flex; align-items: center; gap: 32px;">
-                    <!-- Rows per page -->
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 13px; color: var(--text); font-weight: 500;">Rows per page</span>
-                        <select id="rows-per-page" onchange="handleLimitChange(this.value)" style="padding: 4px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; cursor: pointer; outline: none;">
-                            <option value="10">10</option>
-                            <option value="25">25</option>
-                            <option value="50">50</option>
-                        </select>
-                    </div>
 
-                    <!-- Page Info -->
-                    <div id="page-status" style="font-size: 13px; color: var(--text); font-weight: 500; min-width: 80px; text-align: center;">
-                        Page 1 of 1
-                    </div>
+                <div id="page-status" style="font-size: 13px; font-weight: 600; min-width: 100px; text-align: center;">
+                    Page 1 / 1
+                </div>
 
-                    <!-- Directional Buttons -->
-                    <div style="display: flex; gap: 8px;">
-                        <button class="nav-btn" onclick="changePage(1)" title="First Page" id="first-btn">«</button>
-                        <button class="nav-btn" onclick="changePage(currentPage - 1)" title="Previous Page" id="prev-btn">‹</button>
-                        <button class="nav-btn" onclick="changePage(currentPage + 1)" title="Next Page" id="next-btn">›</button>
-                        <button class="nav-btn" onclick="changePage(totalPages)" title="Last Page" id="last-btn">»</button>
-                    </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="pagination-btn" onclick="changePage(1)" id="first-btn"><i data-lucide="chevrons-left"></i></button>
+                    <button class="pagination-btn" onclick="changePage(currentPage - 1)" id="prev-btn"><i data-lucide="chevron-left"></i></button>
+                    <button class="pagination-btn" onclick="changePage(currentPage + 1)" id="next-btn"><i data-lucide="chevron-right"></i></button>
+                    <button class="pagination-btn" onclick="changePage(totalPages)" id="last-btn"><i data-lucide="chevrons-right"></i></button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Create/Edit User Modal -->
-<div id="user-modal" class="modal-overlay" style="display:none;" onclick="if(event.target==this) closeUserModal()">
-    <div class="modal-content" style="max-width: 480px; max-height: 85vh; overflow-y: auto;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; position: sticky; top: -30px; background: var(--surface); z-index: 10; padding: 10px 0;">
-            <h2 id="modal-title" style="margin:0; font-size:18px; font-weight:800;">Add New User</h2>
-            <button onclick="closeUserModal()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--muted);">&times;</button>
+<!-- Unified User Management Modal -->
+<div id="user-modal" class="modal-overlay" onclick="if(event.target==this) closeUserModal()">
+    <div class="modal-content" style="max-width: 500px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--s-8);">
+            <h2 id="modal-title" class="heading" style="font-size: 20px;">User Provisioning</h2>
+            <button class="icon-btn" onclick="closeUserModal()"><i data-lucide="x"></i></button>
         </div>
+        
         <form id="user-form" onsubmit="handleUserSubmit(event)">
             <input type="hidden" id="edit-email">
-            <div class="s-field">
-                <label>Full Name</label>
-                <input type="text" id="user-name" placeholder="John Doe" required>
+            <div style="display: flex; flex-direction: column; gap: var(--s-5);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4);">
+                    <div class="att-field">
+                        <label class="att-label">Full Name</label>
+                        <input type="text" id="user-name" class="saas-input" placeholder="Operator Name" required>
+                    </div>
+                    <div class="att-field">
+                        <label class="att-label">Email Address</label>
+                        <input type="email" id="user-email" class="saas-input" placeholder="email@domain.com" required>
+                    </div>
+                </div>
+
+                <div class="att-field" id="pw-field">
+                    <label class="att-label">Access Credentials</label>
+                    <input type="password" id="user-password" class="saas-input" placeholder="••••••••">
+                    <p id="pw-note" class="att-hint">Leave blank to maintain existing credentials.</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4);">
+                    <div class="att-field">
+                        <label class="att-label">Organization</label>
+                        <input type="text" id="user-company" class="saas-input" placeholder="Acme Corp">
+                    </div>
+                    <div class="att-field">
+                        <label class="att-label">Communications</label>
+                        <input type="text" id="user-phone" class="saas-input" placeholder="+1 (555) 000-0000">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4);">
+                    <div class="att-field">
+                        <label class="att-label">Security Role</label>
+                        <select id="user-role" class="saas-input" required></select>
+                    </div>
+                    <div class="att-field">
+                        <label class="att-label">Account Status</label>
+                        <select id="user-status" class="saas-input">
+                            <option value="active">Active / Operational</option>
+                            <option value="inactive">Inactive / Suspended</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" id="save-user-btn" class="saas-btn btn-primary" style="margin-top: var(--s-4); width: 100%; justify-content: center; height: 48px;">
+                    <i data-lucide="check-circle" style="width: 18px;"></i>
+                    <span id="save-btn-text">Confirm Registration</span>
+                </button>
             </div>
-            <div class="s-field">
-                <label>Email Address</label>
-                <input type="email" id="user-email" placeholder="john@example.com" required>
-            </div>
-            <div class="s-field" id="pw-field">
-                <label>Password</label>
-                <input type="password" id="user-password" placeholder="••••••••">
-                <p style="font-size: 11px; color: var(--muted); margin-top: 4px;" id="pw-note">Leave blank to keep current password</p>
-            </div>
-            <div class="s-field">
-                <label>Company</label>
-                <input type="text" id="user-company" placeholder="Acme Corp">
-            </div>
-            <div class="s-field">
-                <label>Phone Number</label>
-                <input type="text" id="user-phone" placeholder="+1 234 567 890">
-            </div>
-            <div class="s-field">
-                <label>Role</label>
-                <select id="user-role" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text);" required>
-                </select>
-            </div>
-            <div class="s-field">
-                <label>Status</label>
-                <select id="user-status" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text);">
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                </select>
-            </div>
-            <button type="submit" id="save-user-btn" style="width:100%; padding:14px; background:var(--accent); color:white; border:none; border-radius:8px; font-weight:700; cursor:pointer; margin-top:10px; font-size:14px;">Save User</button>
         </form>
     </div>
 </div>
-
-<style>
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
-.modal-content { background: var(--surface); padding: 30px; border-radius: 16px; width: 90%; box-shadow: var(--shadow-lg); border: 1px solid var(--border); animation: modalIn 0.2s ease-out; }
-@keyframes modalIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-.s-field { margin-bottom: 18px; }
-.s-field label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-.s-field input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; transition: all 0.2s; font-size: 14px; }
-.s-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
-
-.badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
-.badge-role { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent); }
-.badge-active { background: #dcfce7; color: #166534; }
-.badge-inactive { background: #f3f4f6; color: #6b7280; }
-
-/* Dropdown Menu */
-.actions-cell { position: relative; text-align: right; }
-.actions-btn { background: none; border: none; font-size: 20px; color: var(--muted); cursor: pointer; padding: 4px 8px; border-radius: 4px; line-height: 1; }
-.actions-btn:hover { background: var(--surface2); color: var(--text); }
-
-.actions-dropdown { 
-    position: absolute; right: 0; top: 100%; background: var(--surface); border: 1px solid var(--border); 
-    border-radius: 10px; box-shadow: var(--shadow-md); z-index: 100; min-width: 160px; display: none; 
-    overflow: hidden; margin-top: 4px; text-align: left;
-}
-.actions-dropdown.show { display: block; }
-.dropdown-item { 
-    padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; 
-    display: flex; align-items: center; gap: 10px; transition: all 0.2s; 
-}
-.dropdown-item:hover { background: var(--surface2); color: var(--accent); }
-.dropdown-item.danger { color: #ef4444; }
-.dropdown-item.danger:hover { background: #fee2e2; }
-
-.status-btn { display: none; } /* Remove old button style if still present */
-
-/* Toggle Switch Styles */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-}
-.switch input { opacity: 0; width: 0; height: 0; }
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-color: #fca5a5; /* Inactive color */
-  transition: .4s;
-  border-radius: 24px;
-}
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: .4s;
-  border-radius: 50%;
-}
-input:checked + .slider { background-color: #86efac; } /* Active color */
-input:focus + .slider { box-shadow: 0 0 1px #86efac; }
-input:checked + .slider:before { transform: translateX(20px); }
-
-input:checked + .slider:before { transform: translateX(20px); }
-
-/* Navigation Buttons Styling */
-.nav-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    font-size: 18px;
-    font-weight: 400;
-    transition: all 0.2s;
-}
-.nav-btn:hover:not(:disabled) {
-    background: var(--surface2);
-    border-color: var(--accent);
-}
-.nav-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-tr:hover { background: var(--surface2); }
-</style>
 
 <script>
 let allRoles = [];
@@ -252,7 +170,7 @@ async function loadUsers(page = 1) {
 
     const body = document.getElementById('user-table-body');
     body.innerHTML = currentUsers.map(u => `
-        <tr style="border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s;" onclick="openEditUserModal('${u.email}')" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">
+        <tr class="clickable-row" style="border-bottom: 1px solid var(--border);" onclick="openEditUserModal('${u.email}')">
             <td style="padding: 16px;">
                 <div style="display: flex; align-items: center; gap: 12px; padding: 4px; border-radius: 8px;">
                     <div style="width: 36px; height: 36px; background: var(--accent-bg); color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;">
@@ -277,8 +195,8 @@ async function loadUsers(page = 1) {
                     <div style="position: relative;" onclick="event.stopPropagation()">
                         <button class="actions-btn" onclick="toggleActions(event, '${u.email}')">⋮</button>
                         <div id="actions-${u.email.replace(/[@.]/g, '_')}" class="actions-dropdown">
-                            <div class="dropdown-item" onclick="openEditUserModal('${u.email}')"><span>✏️</span> Edit Profile</div>
-                            <div class="dropdown-item" onclick="resetPasswordFromList('${u.email}')"><span>🔑</span> Reset Password</div>
+                            <div class="dropdown-item" onclick="event.stopPropagation(); openEditUserModal('${u.email}')"><span>✏️</span> Edit Profile</div>
+                            <div class="dropdown-item" onclick="event.stopPropagation(); resetPasswordFromList('${u.email}')"><span>🔑</span> Reset Password</div>
                         </div>
                     </div>
                 </div>
@@ -333,7 +251,7 @@ function openCreateUserModal() {
     document.getElementById('user-email').disabled = false;
     document.getElementById('pw-note').style.display = 'none';
     document.getElementById('user-password').required = true;
-    document.getElementById('user-modal').style.display = 'flex';
+    document.getElementById('user-modal').classList.add('active');
 }
 
 function openEditUserModal(email) {
@@ -352,7 +270,7 @@ function openEditUserModal(email) {
     document.getElementById('user-password').value = "";
     document.getElementById('user-password').required = false;
     document.getElementById('pw-note').style.display = 'block';
-    document.getElementById('user-modal').style.display = 'flex';
+    document.getElementById('user-modal').classList.add('active');
 }
 
 function resetPasswordFromList(email) {
@@ -373,7 +291,7 @@ async function toggleUserStatus(email, currentStatus) {
 }
 
 function closeUserModal() {
-    document.getElementById('user-modal').style.display = 'none';
+    document.getElementById('user-modal').classList.remove('active');
 }
 
 async function handleUserSubmit(e) {

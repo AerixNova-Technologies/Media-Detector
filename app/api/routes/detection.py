@@ -443,6 +443,7 @@ def api_upload_staff():
     staff_id_val = request.form.get("staff_id", "").strip()
     address = request.form.get("address", "")
     communication = request.form.get("communication", "") # JSON string from frontend
+    status_val = request.form.get("status", "active") # Default to active
 
     # Auto-generate Staff ID if missing
     if not staff_id_val:
@@ -493,16 +494,16 @@ def api_upload_staff():
             # FORCE update based on the EXACT original name stored in DB
             cur.execute("""
                 UPDATE staff_profiles 
-                SET name = %s, email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s 
+                SET name = %s, email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s, status = %s 
                 WHERE name = %s
-            """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir, original_name))
+            """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir, status_val, original_name))
             
             # If no rows were updated (maybe name was already changed/sanitized), 
             # try finding by sanitized original name
             if cur.rowcount == 0 and sanitized_original:
                 cur.execute("""
                     UPDATE staff_profiles 
-                    SET name = %s, email = %s, phone = %s, address = %s, communication = %s, folder_path = %s 
+                    SET name = %s, email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s, status = %s 
                     WHERE name = %s
                 """, (staff_name, email, phone, address, communication, staff_dir, sanitized_original))
         else:
@@ -512,14 +513,14 @@ def api_upload_staff():
             if row:
                 cur.execute("""
                     UPDATE staff_profiles 
-                    SET email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s 
+                    SET email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s, status = %s 
                     WHERE id = %s
-                """, (email, phone, staff_id_val, address, communication, staff_dir, row["id"]))
+                """, (email, phone, staff_id_val, address, communication, staff_dir, status_val, row["id"]))
             else:
                 cur.execute("""
-                    INSERT INTO staff_profiles (name, email, phone, staff_id, address, communication, folder_path)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir))
+                    INSERT INTO staff_profiles (name, email, phone, staff_id, address, communication, folder_path, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir, status_val))
         conn.commit()
     except Exception as e:
         log.error("DB error saving staff profile: %s", e)
@@ -755,7 +756,52 @@ def api_toggle_staff_status(staff_name: str):
         if conn:
             conn.close()
 
-@api_bp.route("/api/staff_profiles/<staff_name>/<filename>", methods=["DELETE"])
+@api_bp.route("/api/staff_profiles/<staff_name>/update_field", methods=["POST"])
+@login_required
+def api_update_staff_field(staff_name: str):
+    """Update a specific field for a staff profile."""
+    data = request.json
+    field = data.get("field")
+    value = data.get("value")
+    
+    if field not in ["name", "phone", "email"]:
+        return jsonify({"success": False, "error": "Invalid field specification"}), 400
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Check if exists
+        cur.execute("SELECT id, folder_path FROM staff_profiles WHERE name = %s", (staff_name,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "error": "Staff profile not found"}), 404
+        
+        if field == "name":
+            new_name = secure_filename(value)
+            if not new_name:
+                return jsonify({"success": False, "error": "Invalid new name"}), 400
+            
+            # Rename folder if it exists
+            old_dir = row["folder_path"]
+            if old_dir and os.path.exists(old_dir):
+                new_dir = os.path.join(os.path.dirname(old_dir), new_name)
+                if old_dir != new_dir:
+                    os.rename(old_dir, new_dir)
+                    cur.execute("UPDATE staff_profiles SET name = %s, folder_path = %s WHERE id = %s", (value, new_dir, row["id"]))
+            else:
+                cur.execute("UPDATE staff_profiles SET name = %s WHERE id = %s", (value, row["id"]))
+        else:
+            cur.execute(f"UPDATE staff_profiles SET {field} = %s WHERE id = %s", (value, row["id"]))
+            
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("Error updating staff field: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 @login_required
 def api_delete_staff_photo(staff_name: str, filename: str):
     """Delete a single reference photo from a staff member's profile."""
@@ -1132,6 +1178,7 @@ def api_attendance_records():
                 a.first_entry_time     AS in_time,
                 a.last_exit_time       AS out_time,
                 a.camera_name,
+                COALESCE(a.out_camera_name, '-') as out_camera_name,
                 a.in_image,
                 a.out_image,
                 a.timestamp
@@ -1178,6 +1225,7 @@ def api_attendance_records():
                 "in_time": r["in_time"].strftime("%Y-%m-%d %H:%M:%S") if r["in_time"] else "-",
                 "out_time": r["out_time"].strftime("%Y-%m-%d %H:%M:%S") if r["out_time"] else "-",
                 "camera_name": r.get("camera_name") or "Webcam",
+                "out_camera": r.get("out_camera_name") or "-",
                 "in_image": in_img,
                 "out_image": out_img,
                 "timestamp": r["timestamp"].strftime("%Y-%m-%d") if hasattr(r["timestamp"], "strftime") else str(r["timestamp"])

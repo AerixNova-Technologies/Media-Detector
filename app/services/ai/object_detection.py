@@ -127,12 +127,11 @@ class PersonDetector:
         """
         if not HAS_YOLO: return []
         
-        # Lowered conf to 0.25 for better sensitivity
-        # Removed explicit tracker yaml to use internal default
+        classes = [self.PERSON_CLASS_ID, *sorted(self.ANIMAL_CLASS_IDS)]
         results = self.model.track(
             frame,
             persist=persist,
-            classes=[self.PERSON_CLASS_ID],
+            classes=classes,
             conf=0.30, 
             iou=0.5,
             device=self.device,
@@ -159,7 +158,7 @@ class PersonDetector:
                     ids.append(-(1000 + (self._untracked_count % 10000)))
             
             img_h = frame.shape[0]
-            for box, tid, conf in zip(result.boxes.xyxy, ids, result.boxes.conf):
+            for box, tid, conf, cls in zip(result.boxes.xyxy, ids, result.boxes.conf, result.boxes.cls):
                 x1, y1, x2, y2 = box.tolist()
                 bw, bh = x2 - x1, y2 - y1
                 
@@ -177,8 +176,9 @@ class PersonDetector:
                 if ratio < 0.10 or ratio > 2.5:
                     continue
                 
+                cls_id = int(cls)
                 track_id = int(tid)
-                tracks.append([x1, y1, x2, y2, float(conf), track_id])
+                tracks.append([x1, y1, x2, y2, float(conf), track_id, cls_id])
 
         return tracks
 

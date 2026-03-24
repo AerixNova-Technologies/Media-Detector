@@ -2,269 +2,367 @@
 {% set active_page = 'dashboard' %}
 
 {% block content %}
-<div id="view-dashboard" class="dashboard-container" style="padding: 20px 24px; background: var(--bg); min-height: 100%; display: flex; flex-direction: column; gap: 16px;">
+<div id="view-dashboard" class="dashboard-wrap">
     
-    <!-- Top Header Profile Section -->
-    <div class="dashboard-welcome-row" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px;">
-        <div>
-            <div id="greeting-text" style="font-size: 24px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px;">
-                Good morning, {{ user_info.full_name|default('User') }}! 👋
+    <!-- Welcome Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1 id="greeting-text" class="heading" style="font-size: 28px; color: var(--text-primary);">
+                    Good morning, {{ user_info.full_name|default('User') }}! 👋
+                </h1>
+                <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">
+                    System is operational. Here's what's happening across your surveillance network.
+                </p>
             </div>
-            <p style="color: var(--muted); font-size: 14px; margin-top: 4px;">Welcome back! Here's an overview of your monitoring status</p>
+            <div style="display: flex; gap: var(--s-3); align-items: center;">
+                <button class="saas-btn btn-secondary" onclick="location.reload()">
+                    <i data-lucide="refresh-cw" style="width: 16px;"></i>
+                    <span class="btn-text">Refresh</span>
+                </button>
+                <button class="saas-btn btn-secondary" onclick="toggleSummary('dash-summary')" data-summary-id="dash-summary">
+                    <i data-lucide="chevron-up" style="width: 16px;"></i>
+                    <span class="btn-text">Hide Summary</span>
+                </button>
+            </div>
         </div>
-        
-        <div style="display: flex; gap: 12px; align-items: center;">
-            <button onclick="loadDashboard()" class="btn" style="background: var(--surface); border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; color: var(--text); display: flex; align-items: center; gap: 8px; font-weight: 600;">
-                <span style="font-size: 16px;">🔄</span> Refresh
-            </button>
+    
+    <!-- Network Overview & Monitoring Hub -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--s-6); margin-bottom: var(--s-8);">
+        <!-- Main Hub Hero -->
+        <div class="saas-card" style="position: relative; padding: 0; overflow: hidden; height: 340px;">
+            <div id="hero-carousel-container" style="position: absolute; inset: 0;">
+                <img id="hero-img-1" src="/static/img/hero/hero1.png" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.6; transition: opacity 2s ease-in-out;" alt="Security Hub">
+                <img id="hero-img-2" src="/static/img/hero/hero2.png" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 2s ease-in-out;" alt="Security Hub">
+            </div>
+            <div style="position: absolute; inset: 0; background: linear-gradient(to top, var(--bg-surface) 0%, transparent 100%); pointer-events: none;"></div>
+            
+            <div style="position: absolute; top: var(--s-6); left: var(--s-6);">
+                <div class="status-badge status-success" style="display: inline-flex; align-items: center; gap: var(--s-2); border: 1px solid var(--success);">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success);"></span>
+                    CENTRAL NODE ACTIVE
+                </div>
+            </div>
+
+            <div style="position: absolute; bottom: var(--s-8); left: var(--s-8);">
+                <h2 class="heading" style="font-size: 24px; margin-bottom: var(--s-2);">Security Operations Center</h2>
+                <p style="color: var(--text-secondary); max-width: 400px;">Global monitoring active across all connected nodes. AI optimization processing high-priority streams.</p>
+            </div>
+        </div>
+
+        <!-- Live Preview Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: var(--s-3);">
+            {% for i in range(4) %}
+                {% if cameras and cameras|length > i %}
+                    {% set cam = cameras[i] %}
+                    <div class="saas-card" style="padding: 0; overflow: hidden; position: relative; border-color: var(--border-light); cursor: pointer;" onclick="location.href='/live'">
+                        <div style="width: 100%; height: 100%; background: #020617; display: flex; align-items: center; justify-content: center; position: relative;">
+                            <!-- Premium Lens Background Loader -->
+                            <div style="position: absolute; opacity: 0.4; transform: scale(0.6);">
+                                <svg class="bb-eye-svg colorful" viewBox="0 0 120 70">
+                                    <path class="bb-eye-outline colorful" d="M10,35 C10,35 40,5 60,5 C80,5 110,35 110,35 C110,35 80,65 60,65 C40,65 10,35 10,35 Z" stroke="url(#eye-grad-premium)" />
+                                    <circle class="bb-eye-iris colorful" cx="60" cy="35" r="22" stroke="url(#eye-grad-premium)" />
+                                    <circle class="bb-eye-pupil colorful" cx="60" cy="35" r="8" fill="url(#eye-grad-premium)" />
+                                    <circle class="bb-lens-reflection" cx="54" cy="29" r="3" />
+                                </svg>
+                            </div>
+                            
+                            <img src="/api/camera_preview_stream/{{ cam.id }}?t={{ range(1, 99999)|random }}" style="width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 2;" alt="{{ cam.name }}" onerror="this.style.opacity='0.2'">
+                        </div>
+                        
+                        <div style="position: absolute; top: var(--s-2); left: var(--s-2); z-index: 10; background: rgba(239, 68, 68, 0.8); padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 800; color: white; display: flex; align-items: center; gap: 4px;">
+                            <span style="width: 4px; height: 4px; background: white; border-radius: 50%; animation: pulse 2s infinite;"></span>
+                            LIVE
+                        </div>
+                        <div style="position: absolute; bottom: var(--s-2); right: var(--s-2); z-index: 10; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white;">
+                            {{ cam.name }}
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="saas-card" style="padding: 0; overflow: hidden; position: relative; border-color: var(--border-light); background: #020617; display: flex; align-items: center; justify-content: center;">
+                        <div style="text-align: center; color: var(--text-tertiary); position: relative;">
+                            <!-- Premium Lens Biggboss Eye -->
+                            <svg class="bb-eye-svg colorful" viewBox="0 0 120 70" style="margin-bottom: 2px; transform: scale(1);">
+                                <defs>
+                                    <linearGradient id="eye-grad-premium" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#FF0080" />
+                                        <stop offset="40%" style="stop-color:#7928CA" />
+                                        <stop offset="100%" style="stop-color:#0070F3" />
+                                    </linearGradient>
+                                    <radialGradient id="lens-grad" cx="50%" cy="50%" r="50%">
+                                        <stop offset="0%" style="stop-color:#ffffff; stop-opacity:0.2" />
+                                        <stop offset="100%" style="stop-color:#7928CA; stop-opacity:0.1" />
+                                    </radialGradient>
+                                </defs>
+                                <!-- Outer Shell -->
+                                <path class="bb-eye-outline colorful" d="M10,35 C10,35 40,5 60,5 C80,5 110,35 110,35 C110,35 80,65 60,65 C40,65 10,35 10,35 Z" stroke="url(#eye-grad-premium)" />
+                                
+                                <!-- Lens Iris Area -->
+                                <circle class="bb-eye-iris colorful" cx="60" cy="35" r="22" fill="url(#lens-grad)" stroke="url(#eye-grad-premium)" />
+                                
+                                <!-- Aperture Details -->
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(0 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(45 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(90 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(135 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(180 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(225 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(270 60 35)" />
+                                <line class="bb-aperture-line" x1="60" y1="13" x2="60" y2="18" transform="rotate(315 60 35)" />
+
+                                <!-- Pupil (Deep Lens Center) -->
+                                <circle class="bb-eye-pupil colorful" cx="60" cy="35" r="8" fill="url(#eye-grad-premium)" />
+                                
+                                <!-- Glass Reflections -->
+                                <circle class="bb-lens-reflection" cx="54" cy="29" r="3" />
+                                <circle class="bb-lens-reflection" cx="65" cy="42" r="1.5" />
+                            </svg>
+                            <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.1em; color: rgba(255,255,255,0.4); margin-top: -5px;">IDLE_NODE</div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    <!-- Analytics Quick Stats -->
+    <div id="dash-summary" class="summary-container">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); margin-bottom: var(--s-8);">
+            
+            <!-- Cameras Status -->
+            <div class="saas-card fade-in" style="animation-delay: 0.1s;">
+                <div class="card-header">
+                    <span class="card-title">Network Status</span>
+                    <i data-lucide="radio" style="color: var(--accent); width: 20px;"></i>
+                </div>
+                <div class="heading" style="font-size: 32px; margin-bottom: var(--s-2);">
+                    <span id="dash-cam-online">...</span> <span style="color: var(--text-muted); font-size: 18px;">/ <span id="dash-cam-total">...</span></span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-3);">
+                    <span style="font-size: 13px; font-weight: 600; color: var(--success);"><span id="dash-online-pct">...</span>% uptime</span>
+                    <span style="font-size: 13px; color: var(--text-tertiary);">Cameras active</span>
+                </div>
+                <div style="height: 6px; background: var(--bg-surface-alt); border-radius: 3px; overflow: hidden;">
+                    <div id="dash-cam-progress" style="height: 100%; background: var(--accent); width: 0%; transition: width 1s ease;"></div>
+                </div>
+            </div>
+
+            <!-- Member Count -->
+            <div class="saas-card fade-in" style="animation-delay: 0.2s;">
+                <div class="card-header">
+                    <span class="card-title">Database Records</span>
+                    <i data-lucide="users" style="color: var(--info); width: 20px;"></i>
+                </div>
+                <div id="dash-staff" class="heading" style="font-size: 32px; margin-bottom: var(--s-2);">...</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-3);">
+                    <span style="font-size: 13px; color: var(--text-tertiary);">Profiles registered</span>
+                </div>
+                <div style="height: 6px; background: var(--bg-surface-alt); border-radius: 3px; overflow: hidden;">
+                    <div id="dash-staff-progress" style="height: 100%; background: var(--info); width: 20%; transition: width 1s ease;"></div>
+                </div>
+            </div>
+
+            <!-- Active Users -->
+            <div class="saas-card fade-in" style="animation-delay: 0.3s;">
+                <div class="card-header">
+                    <span class="card-title">System Activity</span>
+                    <i data-lucide="activity" style="color: var(--warning); width: 20px;"></i>
+                </div>
+                <div id="dash-events" class="heading" style="font-size: 32px; margin-bottom: var(--s-2);">...</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-3);">
+                    <span style="font-size: 13px; color: var(--text-tertiary);">Live alerts (24h)</span>
+                </div>
+                <div style="height: 6px; background: var(--bg-surface-alt); border-radius: 3px; overflow: hidden;">
+                    <div id="dash-event-progress" style="height: 100%; background: var(--warning); width: 0%; transition: width 1s ease;"></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- 3 Major Stat Cards (Removed Daily Events) -->
-    <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 8px;">
-        
-        <!-- Card 1: Cameras Status -->
-        <div class="premium-card">
-            <div class="premium-card-header">
-                <span class="premium-card-label">Network Status</span>
-                <span class="premium-card-icon">📡</span>
-            </div>
-            <div class="premium-card-value"><span id="dash-cam-online">...</span> / <span id="dash-cam-total">...</span></div>
-            <div class="premium-card-footer">
-                <div class="trend-info">
-                    <span class="trend-up">↗ <span id="dash-online-pct">...</span>%</span>
-                    <span class="trend-label">cameras online</span>
-                </div>
-                <div class="progress-track">
-                    <div id="dash-cam-progress" class="progress-fill" style="width: 0%"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Card 2: Member Count -->
-        <div class="premium-card">
-            <div class="premium-card-header">
-                <span class="premium-card-label">Member Count</span>
-                <span class="premium-card-icon">👤</span>
-            </div>
-            <div class="premium-card-value" id="dash-staff">...</div>
-            <div class="premium-card-footer">
-                <div class="trend-info">
-                    <span class="trend-label">Profiles registered in DB</span>
-                </div>
-                <div class="progress-track">
-                    <div id="dash-staff-progress" class="progress-fill accent" style="width: 20%"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Card 3: Active Users -->
-        <div class="premium-card">
-            <div class="premium-card-header">
-                <span class="premium-card-label">Active Users</span>
-                <span class="premium-card-icon">👥</span>
-            </div>
-            <div class="premium-card-value" id="dash-users">...</div>
-            <div class="premium-card-footer">
-                <div class="trend-info">
-                    <span class="trend-label">System access accounts</span>
-                </div>
-                <div class="progress-track">
-                    <div id="dash-users-progress" class="progress-fill accent" style="width: 15%"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Secondary Areas: Activity & Health -->
-    <div style="flex: 1; display: grid; grid-template-columns: 1fr 360px; gap: 16px; min-height: 0;">
+    <!-- Detailed Insights -->
+    <div style="display: grid; grid-template-columns: 1fr 340px; gap: var(--s-6); align-items: start;">
         
         <!-- Activity Panel -->
-        <div class="settings-card" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
-
-
-            <!-- Detection Events Line Graph -->
-            <div id="attendance-chart-wrapper" style="padding: 16px; background: var(--surface2); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+        <div class="saas-card">
+            <div class="card-header" style="margin-bottom: var(--s-6); position: relative; z-index: 20;">
+                <div style="display: flex; align-items: flex-start; gap: var(--s-4);">
+                    <div style="width: 48px; height: 48px; background: var(--accent-soft); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--accent); border: 1px solid var(--border-accent); position: relative; animation: pulse-glow 3s infinite;">
+                        <i data-lucide="scan-eye" style="width: 24px;"></i>
+                        <div style="position: absolute; inset: -2px; border: 1px solid var(--accent); border-radius: 14px; opacity: 0.3; animation: flicker 4s infinite;"></div>
+                    </div>
                     <div>
-                        <span id="chart-title" style="font-size: 13px; font-weight: 800; color: var(--text); letter-spacing: 0.5px; text-transform: uppercase;">7-Day Detection Trend</span>
-                        <p id="chart-subtitle" style="font-size: 11px; color: var(--muted); margin: 2px 0 0 0;">Check-in and check-out events over the last 7 days</p>
-                    </div>
-                    
-                    <div style="display: flex; gap: 4px; background: var(--surface); padding: 3px; border-radius: 8px; border: 1px solid var(--border);">
-                        <button onclick="renderAttendanceChart('7d')" id="btn-7d" style="padding: 4px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; background: var(--accent); color: white;">7 Days</button>
-                        <button onclick="renderAttendanceChart('30d')" id="btn-30d" style="padding: 4px 12px; font-size: 12px; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--muted);">30 Days</button>
-                    </div>
-
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <span style="font-size: 11px; color: #30bf80; display: flex; align-items: center; gap: 4px;"><span style="width:8px;height:8px;border-radius:50%;background:#30bf80;display:inline-block;"></span> Check-In</span>
-                        <span style="font-size: 11px; color: #e05252; display: flex; align-items: center; gap: 4px;"><span style="width:8px;height:8px;border-radius:50%;background:#e05252;display:inline-block;"></span> Check-Out</span>
+                        <div style="display: flex; align-items: center; gap: var(--s-2);">
+                            <h3 class="heading" id="chart-title" style="font-size: 16px; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.05em;">Detection Intelligence</h3>
+                            <span class="telemetry-tag active">Neural Core v4.0</span>
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-tertiary); font-family: 'JetBrains Mono';">SYST_LOG: MONITORING_ACTIVE // UPLINK_STABLE</p>
                     </div>
                 </div>
-                <div style="height: 320px; position: relative;">
-                    <canvas id="attendanceChart"></canvas>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                    <div style="display: flex; gap: var(--s-2);">
+                        <div class="telemetry-tag">FACE: <span style="color: var(--success)">ACTIVE</span></div>
+                        <div class="telemetry-tag">OBJ: <span style="color: var(--success)">ACTIVE</span></div>
+                        <div class="telemetry-tag">MOT: <span style="color: var(--success)">ACTIVE</span></div>
+                    </div>
+                    <div style="display: flex; gap: var(--s-2); background: var(--bg-surface-alt); padding: 4px; border-radius: var(--radius-md);">
+                        <button onclick="renderAttendanceChart('7d')" id="btn-7d" class="saas-btn btn-secondary" style="padding: 2px 10px; font-size: 11px; height: 24px; border-radius: 6px;">7D</button>
+                        <button onclick="renderAttendanceChart('30d')" id="btn-30d" class="saas-btn btn-secondary" style="padding: 2px 10px; font-size: 11px; height: 24px; border-radius: 6px; background: transparent; border: none;">30D</button>
+                    </div>
                 </div>
             </div>
-            
-            <!-- Daily Presence Overview -->
-            <div id="attendance-summary-card" style="margin-top: 16px; padding: 16px; background: var(--surface2); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div>
-                        <span style="font-size: 13px; font-weight: 800; color: var(--text); letter-spacing: 0.5px; text-transform: uppercase;">Live Attendance Overview</span>
-                        <p style="font-size: 11px; color: var(--muted); margin: 2px 0 0 0;">Today's presence status at a glance</p>
-                    </div>
+
+            <div style="height: 360px; width: 100%; position: relative; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-main); background: #080a0f;">
+                <!-- HUD Elements -->
+                <div class="ai-grid-overlay"></div>
+                <div class="ai-scanline"></div>
+                
+                <!-- Crosshair corner markers -->
+                <div style="position: absolute; top: 10px; left: 10px; width: 15px; height: 15px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); opacity: 0.5;"></div>
+                <div style="position: absolute; top: 10px; right: 10px; width: 15px; height: 15px; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); opacity: 0.5;"></div>
+                <div style="position: absolute; bottom: 10px; left: 10px; width: 15px; height: 15px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); opacity: 0.5;"></div>
+                <div style="position: absolute; bottom: 10px; right: 10px; width: 15px; height: 15px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); opacity: 0.5;"></div>
+
+                <div style="position: absolute; top: 15px; left: 35px; font-family: 'JetBrains Mono'; font-size: 9px; color: var(--accent); opacity: 0.7; z-index: 15;">
+                    TRK_ID: 9X-72Alpha <br>
+                    LOC: Sector_04
                 </div>
-                <div id="presence-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
-                    <!-- Presence items will be injected here -->
-                    <div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--muted); font-size: 13px;">
-                        Loading presence data...
+
+                <canvas id="attendanceChart" style="z-index: 2; position: relative;"></canvas>
+            </div>
+            
+            <div style="margin-top: var(--s-8);">
+                <div class="card-header" style="margin-bottom: var(--s-4);">
+                    <h3 class="heading" style="font-size: 14px;">Live Presence Overview</h3>
+                </div>
+                <div id="presence-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s-4);">
+                    <div style="grid-column: 1/-1; text-align: center; padding: var(--s-8); color: var(--text-tertiary);">
+                        <div class="saas-spinner"></div>
+                        Loading data...
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Health & Info panel -->
-        <div style="display: flex; flex-direction: column; gap: 16px; min-height: 0;">
-            <div class="settings-card" style="padding: 24px; flex-shrink: 0;">
-                <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 20px;">System Health</h3>
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface2); border-radius: 10px;">
-                        <span style="font-size: 14px; font-weight: 600;">AI Engine</span>
-                        <span class="badge" id="health-ai">...</span>
+        <!-- System Health Panel -->
+        <div style="display: flex; flex-direction: column; gap: var(--s-6);">
+            <div class="saas-card">
+                <h3 class="heading" style="font-size: 16px; margin-bottom: var(--s-6);">Infrastructure Health</h3>
+                
+                <div style="display: flex; flex-direction: column; gap: var(--s-4);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--s-4); background: var(--bg-surface-alt); border-radius: var(--radius-md);">
+                        <div style="display: flex; align-items: center; gap: var(--s-3);">
+                            <div style="color: var(--accent);"><i data-lucide="cpu" style="width: 18px;"></i></div>
+                            <span style="font-size: 14px; font-weight: 500;">AI Engine</span>
+                        </div>
+                        <span id="health-ai" class="status-badge status-success">Active</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface2); border-radius: 10px;">
-                        <span style="font-size: 14px; font-weight: 600;">Database</span>
-                        <span class="badge" id="health-db">...</span>
+                    
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--s-4); background: var(--bg-surface-alt); border-radius: var(--radius-md);">
+                        <div style="display: flex; align-items: center; gap: var(--s-3);">
+                            <div style="color: var(--info);"><i data-lucide="database" style="width: 18px;"></i></div>
+                            <span style="font-size: 14px; font-weight: 500;">Database</span>
+                        </div>
+                        <span id="health-db" class="status-badge status-success">Syncing</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--surface2); border-radius: 10px;">
-                        <span style="font-size: 14px; font-weight: 600;">Media Server</span>
-                        <span class="badge" id="health-media">...</span>
+                    
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--s-4); background: var(--bg-surface-alt); border-radius: var(--radius-md);">
+                        <div style="display: flex; align-items: center; gap: var(--s-3);">
+                            <div style="color: var(--warning);"><i data-lucide="server" style="width: 18px;"></i></div>
+                            <span style="font-size: 14px; font-weight: 500;">Media Node</span>
+                        </div>
+                        <span id="health-media" class="status-badge status-success">Online</span>
                     </div>
                 </div>
             </div>
-            
-            <div class="settings-card" style="padding: 24px; border-left: 4px solid var(--accent); flex: 1;">
-                <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Operational Brief</h3>
-                <p style="font-size: 13px; color: var(--muted); line-height: 1.5;">All sensors report nominal parameters. AI optimization v2.0 is engaged on current channels.</p>
+
+            <div class="saas-card">
+                <h3 class="heading" style="font-size: 14px; margin-bottom: var(--s-2);">Operational Brief</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
+                    System optimization v2.4 active. All sensory arrays reporting nominal parameters. No anomalies detected in current cycle.
+                </p>
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 let attendanceChartInstance = null;
-let timelineChartInstance = null;
+
 async function loadDashboard() {
     try {
         const res = await fetch('/api/dashboard_v3?t=' + Date.now());
-        if (!res.ok) throw new Error("API Fetch Failed");
         const data = await res.json();
         
         // Update Stats
-        const online = data.cam_online ?? 0;
-        const total = data.cam_total ?? 0;
-        const staff = data.staff_total ?? 0;
-        const users = data.user_total ?? 0;
+        document.getElementById('dash-cam-online').innerText = data.cam_online ?? 0;
+        document.getElementById('dash-cam-total').innerText = data.cam_total ?? 0;
+        document.getElementById('dash-staff').innerText = data.staff_total ?? 0;
+        document.getElementById('dash-users').innerText = data.user_total ?? 0;
 
-        document.getElementById('dash-cam-online').innerText = online;
-        document.getElementById('dash-cam-total').innerText = total;
-        document.getElementById('dash-staff').innerText = staff;
-        document.getElementById('dash-users').innerText = users;
+        // Health Utility
+        const updateHealth = (id, status, textMap) => {
+            const el = document.getElementById(id);
+            const mapping = textMap[status] || { text: 'Unknown', class: 'status-warning' };
+            el.innerText = mapping.text;
+            el.className = 'status-badge ' + mapping.class;
+        };
 
-        if (data.db_status) {
-            const dbBadge = document.getElementById('health-db');
-            dbBadge.innerText = data.db_status === 'connected' ? 'Connected' : 'Error';
-            dbBadge.className = 'badge ' + (data.db_status === 'connected' ? '' : 'offline');
-        }
+        updateHealth('health-ai', data.ai_status, {
+            'running': { text: 'Running', class: 'status-success' },
+            'idle': { text: 'Idle', class: 'status-warning' },
+            'error': { text: 'Error', class: 'status-error' }
+        });
 
-        if (data.ai_status) {
-            const aiBadge = document.getElementById('health-ai');
-            aiBadge.innerText = data.ai_status === 'running' ? 'Running' : (data.ai_status === 'idle' ? 'Idle' : 'Error');
-            aiBadge.className = 'badge ' + (data.ai_status === 'running' ? '' : 'offline');
-        }
+        updateHealth('health-db', data.db_status, {
+            'connected': { text: 'Connected', class: 'status-success' },
+            'disconnected': { text: 'Offline', class: 'status-error' }
+        });
 
-        if (data.media_status) {
-            const msBadge = document.getElementById('health-media');
-            window.sidebarToggleEnabled = document.documentElement.getAttribute('data-sidebar-toggle') === "true";
-            msBadge.innerText = data.media_status === 'active' ? 'Active' : 'Idle';
-            msBadge.className = 'badge ' + (data.media_status === 'active' ? '' : 'offline');
-        }
+        updateHealth('health-media', data.media_status, {
+            'active': { text: 'Active', class: 'status-success' },
+            'idle': { text: 'Idle', class: 'status-warning' }
+        });
         
-        // Online Pct & Progress
-        const pct = total > 0 ? Math.round((online / total) * 100) : 0;
+        // Progress Bars
+        const pct = data.cam_total > 0 ? Math.round((data.cam_online / data.cam_total) * 100) : 0;
         document.getElementById('dash-online-pct').innerText = pct;
         document.getElementById('dash-cam-progress').style.width = pct + '%';
         
-        const staffPct = Math.min(100, Math.round((staff / 50) * 100));
-        document.getElementById('dash-staff-progress').style.width = staffPct + '%';
+        document.getElementById('dash-staff-progress').style.width = Math.min(100, (data.staff_total / 100) * 100) + '%';
+        document.getElementById('dash-users-progress').style.width = Math.min(100, (data.user_total / 20) * 100) + '%';
 
-        const userPct = Math.min(100, Math.round((users / 10) * 100));
-        document.getElementById('dash-users-progress').style.width = userPct + '%';
-
-
-        // Cache trend data for switching
+        // Trend Charts
         window.trend7d = data.attendance_trend || [];
         window.trend30d = data.attendance_monthly_trend || [];
-        
         renderAttendanceChart('7d');
 
-        // Live Presence Rendering
+        // Presence List
         const presenceList = document.getElementById('presence-list');
         if (data.daily_presence && data.daily_presence.length > 0) {
-            presenceList.classList.remove('fade-in');
-            void presenceList.offsetWidth; // trigger reflow
-            presenceList.classList.add('fade-in');
             presenceList.innerHTML = data.daily_presence.map(p => {
                 const isPresent = p.status === 'IN';
                 return `
-                    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; align-items: center; gap: 12px;">
-                        <div style="width: 32px; height: 32px; border-radius: 50%; background: ${isPresent ? 'rgba(48, 191, 128, 0.1)' : 'var(--surface2)'}; color: ${isPresent ? 'var(--green)' : 'var(--muted)'}; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; border: 1px solid ${isPresent ? 'var(--green)' : 'var(--border)'}">
+                    <div style="background: var(--bg-surface-alt); padding: var(--s-4); border-radius: var(--radius-md); display: flex; align-items: center; gap: var(--s-4);">
+                        <div style="width: 36px; height: 36px; border-radius: var(--radius-full); background: ${isPresent ? 'var(--accent-soft)' : 'var(--bg-input)'}; color: ${isPresent ? 'var(--accent)' : 'var(--text-tertiary)'}; display: flex; align-items: center; justify-content: center; font-weight: 700; border: 1px solid ${isPresent ? 'var(--border-accent)' : 'var(--border-light)'};">
                             ${p.name.charAt(0).toUpperCase()}
                         </div>
                         <div style="flex: 1; min-width: 0;">
-                            <div style="font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name}</div>
-                            <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: ${isPresent ? 'var(--green)' : 'var(--muted)'}; font-weight: 600;">
-                                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${isPresent ? 'var(--green)' : 'var(--muted)'}"></span>
-                                ${isPresent ? 'Present' : 'Away'}
+                            <div style="font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name}</div>
+                            <div style="font-size: 12px; color: ${isPresent ? 'var(--success)' : 'var(--text-tertiary)'}; font-weight: 500;">
+                                ${isPresent ? 'On Premises' : 'Offline'}
                             </div>
                         </div>
-                        <div style="font-size: 10px; color: var(--muted); text-align: right;">
+                        <div style="font-size: 11px; color: var(--text-tertiary);">
                             ${p.last_seen ? p.last_seen.split('T')[1].substring(0, 5) : '--:--'}
                         </div>
                     </div>
                 `;
             }).join('');
         } else {
-            presenceList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--muted); font-size: 13px;">No active presence data for today.</div>';
-        }
-        
-        if (data.attendance_trend && data.attendance_trend.length > 0) {
-            document.getElementById('attendance-chart-wrapper').style.display = 'block';
-        } else {
-            document.getElementById('attendance-chart-wrapper').style.display = 'none';
+            presenceList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: var(--s-6); color: var(--text-tertiary);">No activity detected today.</div>';
         }
 
-    } catch (e) { 
+    } catch (e) {
         console.error("Dashboard Load Error:", e);
-        if (document.getElementById('dash-staff').innerText === "...") document.getElementById('dash-staff').innerText = "Err";
-        if (document.getElementById('dash-users').innerText === "...") document.getElementById('dash-users').innerText = "Err";
-        
-        // Detailed error display in health badges
-        const healthBadges = ['health-ai', 'health-db', 'health-media'];
-        healthBadges.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.innerText = "Fetch Error";
-                el.className = 'badge offline';
-            }
-        });
-        
-        // Show an overlay or toast if possible, or just log to console
-        if (data && data.error) {
-             console.error("Backend Error Description:", data.error);
-        }
     }
 }
 
@@ -272,88 +370,76 @@ function renderAttendanceChart(range) {
     const data = (range === '30d') ? window.trend30d : window.trend7d;
     if (!data || data.length === 0) return;
 
-    const labels = data.map(t => t.day);
-    const checkInData = data.map(t => t.check_in);
-    const checkOutData = data.map(t => t.check_out);
-
-    // Update UI Buttons
-    const btn7d = document.getElementById('btn-7d');
-    const btn30d = document.getElementById('btn-30d');
+    // Toggle Button Styles
+    const b7 = document.getElementById('btn-7d');
+    const b30 = document.getElementById('btn-30d');
     if (range === '30d') {
-        btn30d.style.background = 'var(--accent)';
-        btn30d.style.color = 'white';
-        btn7d.style.background = 'transparent';
-        btn7d.style.color = 'var(--muted)';
-        document.getElementById('chart-title').innerText = '30-Day Detection Trend';
-        document.getElementById('chart-subtitle').innerText = 'Check-in and check-out events over the last 30 days';
+        b30.style.background = 'var(--bg-surface)';
+        b30.style.color = 'var(--text-primary)';
+        b7.style.background = 'transparent';
+        b7.style.color = 'var(--text-tertiary)';
     } else {
-        btn7d.style.background = 'var(--accent)';
-        btn7d.style.color = 'white';
-        btn30d.style.background = 'transparent';
-        btn30d.style.color = 'var(--muted)';
-        document.getElementById('chart-title').innerText = '7-Day Detection Trend';
-        document.getElementById('chart-subtitle').innerText = 'Check-in and check-out events over the last 7 days';
+        b7.style.background = 'var(--bg-surface)';
+        b7.style.color = 'var(--text-primary)';
+        b30.style.background = 'transparent';
+        b30.style.color = 'var(--text-tertiary)';
     }
 
-    if (attendanceChartInstance) { attendanceChartInstance.destroy(); }
-    const ctx = document.getElementById('attendanceChart').getContext('2d');
+    if (attendanceChartInstance) attendanceChartInstance.destroy();
     
+    const ctx = document.getElementById('attendanceChart').getContext('2d');
     attendanceChartInstance = new Chart(ctx, {
-        type: 'bar',
+        type: 'line',
         data: {
-            labels: labels,
+            labels: data.map(t => t.day),
             datasets: [
                 {
-                    label: 'Check-In',
-                    data: checkInData,
-                    backgroundColor: 'rgba(48, 191, 128, 0.8)',
-                    borderColor: '#30bf80',
-                    borderWidth: 1,
-                    borderRadius: range === '30d' ? 2 : 6,
-                },
-                {
-                    label: 'Check-Out',
-                    data: checkOutData,
-                    backgroundColor: 'rgba(224, 82, 82, 0.8)',
-                    borderColor: '#e05252',
-                    borderWidth: 1,
-                    borderRadius: range === '30d' ? 2 : 6,
+                    label: 'Detection Events',
+                    data: data.map(t => t.check_in + t.check_out),
+                    borderColor: '#10b981', // Emerald 500
+                    backgroundColor: (context) => {
+                        const chart = context.chart;
+                        const {ctx, chartArea} = chart;
+                        if (!chartArea) return null;
+                        const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                        gradient.addColorStop(0, 'rgba(16, 185, 129, 0)');
+                        gradient.addColorStop(1, 'rgba(16, 185, 129, 0.15)');
+                        return gradient;
+                    },
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#080a0f',
+                    pointBorderWidth: 2,
+                    tension: 0, // Sharp lines for technical look
+                    fill: true
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(15,20,35,0.95)',
+                    backgroundColor: '#12141c',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#94a3b8',
                     padding: 12,
                     cornerRadius: 8,
-                    titleFont: { size: 13, weight: 'bold' },
-                    callbacks: {
-                        label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}`
-                    }
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1
                 }
             },
             scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { 
-                        color: '#777', 
-                        font: { size: 10 },
-                        autoSkip: true,
-                        maxRotation: 0,
-                        minRotation: 0
-                    },
-                    border: { display: false }
-                },
                 y: {
                     beginAtZero: true,
-                    grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
-                    ticks: { color: '#777', font: { size: 11 }, stepSize: 1 },
-                    border: { display: false }
+                    grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+                    ticks: { color: '#64748b', font: { size: 11 } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748b', font: { size: 11 } }
                 }
             }
         }
@@ -363,21 +449,41 @@ function renderAttendanceChart(range) {
 function updateGreeting() {
     const hour = new Date().getHours();
     const greet = document.getElementById('greeting-text');
-    let text = "Good morning";
-    if (hour >= 12 && hour < 17) text = "Good afternoon";
-    else if (hour >= 17 || hour < 4) text = "Good evening";
-    
-    const name = "{{ user_info.full_name|default('Admin') }}";
-    greet.innerHTML = `${text}, ${name}! 👋`;
+    let msg = "Good morning";
+    if (hour >= 12 && hour < 17) msg = "Good afternoon";
+    else if (hour >= 17 || hour < 4) msg = "Good evening";
+    greet.innerHTML = `${msg}, {{ user_info.full_name|default('User') }}! 👋`;
+}
+
+let currentHeroIndex = 1;
+const totalHeroImages = 6;
+
+function initHeroCarousel() {
+    const hero1 = document.getElementById('hero-img-1');
+    const hero2 = document.getElementById('hero-img-2');
+    if (!hero1 || !hero2) return;
+
+    setInterval(() => {
+        const nextIndex = (currentHeroIndex % totalHeroImages) + 1;
+        const activeImg = currentHeroIndex % 2 === 1 ? hero1 : hero2;
+        const inactiveImg = currentHeroIndex % 2 === 1 ? hero2 : hero1;
+        
+        // Update the invisible image's source to the next image
+        inactiveImg.src = `/static/img/hero/hero${nextIndex}.png`;
+        
+        // When the next image is ready, swap opacities
+        inactiveImg.onload = () => {
+            inactiveImg.style.opacity = '0.6';
+            activeImg.style.opacity = '0';
+            currentHeroIndex = nextIndex;
+        };
+    }, 60000); // 1 minute interval
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     updateGreeting();
+    initHeroCarousel();
 });
 </script>
-
-<style>
-.dashboard-container { min-height: calc(100vh - 53px); box-sizing: border-box; padding-bottom: 40px !important; }
-</style>
 {% endblock %}

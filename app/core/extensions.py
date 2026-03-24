@@ -21,8 +21,8 @@ from app.services.sse_service import sse_manager
 # ── AI Feature Toggles (runtime flags, mutated via /api/toggles) ─────────────
 AI_TOGGLES: dict[str, bool] = {
     "person":  True,
-    "action":  True,
-    "emotion": True,
+    "action":  False,
+    "emotion": False,
 }
 
 # ── Lazy-initialized singletons ──────────────────────────────────────────────

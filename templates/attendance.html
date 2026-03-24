@@ -2,1178 +2,429 @@
 {% set active_page = 'attendance' %}
 
 {% block content %}
-<div style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-  <div
-    style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-    <div
-      style="margin-bottom: 18px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;">
-      <div>
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
-          <span style="font-size:24px;">📅</span>
-          <h1 style="font-size:22px; font-weight:800; color: var(--text); margin:0;">Attendance</h1>
+<div class="page-wrap">
+    <!-- Page Header -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: var(--s-8);">
+        <div>
+            <h1 class="heading" style="font-size: 28px; color: var(--text-primary); display: flex; align-items: center; gap: var(--s-3);">
+                <i data-lucide="calendar-check" style="color: var(--accent);"></i>
+                Attendance Log
+            </h1>
+            <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">
+                Verified personnel entry/exit timestamps and AI validation records.
+            </p>
         </div>
-        <p style="font-size:13px; color: var(--muted); margin:0;">Track and monitor member attendance records</p>
-      </div>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <div class="period-toggle">
-          <button id="att-period-all" class="toggle-btn active" onclick="setAttPeriod('all')">All</button>
-          <button id="att-period-today" class="toggle-btn" onclick="setAttPeriod('today')">Today</button>
+        <div style="display: flex; align-items: center; gap: var(--s-3);">
+            <div style="display: flex; background: var(--bg-surface-alt); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-main);">
+                <button id="att-period-all" class="nav-pill active" onclick="setAttPeriod('all')">All Time</button>
+                <button id="att-period-today" class="nav-pill" onclick="setAttPeriod('today')">Today</button>
+            </div>
+            <button class="saas-btn btn-secondary" onclick="location.reload()">
+                <i data-lucide="refresh-cw" style="width: 16px;"></i>
+                <span class="btn-text">Refresh</span>
+            </button>
+            <button class="saas-btn btn-secondary" onclick="toggleSummary('attendance-summary')" data-summary-id="attendance-summary" style="margin-right: var(--s-3);">
+                <i data-lucide="chevron-up" style="width: 16px;"></i>
+                <span class="btn-text">Hide Summary</span>
+            </button>
+            <button class="saas-btn btn-secondary" onclick="exportAttendance()">
+                <i data-lucide="download" style="width: 16px;"></i> Export Data
+            </button>
         </div>
-        <button id="toggle-att-summary-btn" class="secondary-btn" onclick="toggleAttendanceSummary()"><span>⌃</span>
-          Hide Summary</button>
-        <!-- 
-        <div class="att-view-tabs">
-          <button class="att-view-tab active" id="tab-events" onclick="switchView('events')">Events</button>
-          <button class="att-view-tab" id="tab-forensics" onclick="switchView('forensics')">📸 Forensic Images</button>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div id="attendance-summary" class="summary-container">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); margin-bottom: var(--s-8);">
+            <div class="saas-card">
+                <div class="card-header">
+                    <span class="card-title">Aggregated Logs</span>
+                    <i data-lucide="layers" style="color: var(--accent); width: 18px;"></i>
+                </div>
+                <div id="sum-total" class="heading" style="font-size: 28px;">0</div>
+            </div>
+            <div class="saas-card">
+                <div class="card-header">
+                    <span class="card-title">Verified Present Today</span>
+                    <i data-lucide="user-check" style="color: var(--success); width: 18px;"></i>
+                </div>
+                <div id="sum-staff" class="heading" style="font-size: 28px;">0</div>
+            </div>
+            <div class="saas-card">
+                <div class="card-header">
+                    <span class="card-title">Daily Transitions</span>
+                    <i data-lucide="activity" style="color: var(--info); width: 18px;"></i>
+                </div>
+                <div id="sum-today" class="heading" style="font-size: 28px;">0</div>
+            </div>
         </div>
-        -->
-        <button class="att-btn att-btn-secondary" onclick="exportAttendance()">📥 Export</button>
-        <!--
-        <button id="instant-mark-btn" class="att-btn" style="background: var(--accent2); color: white;" onclick="instantMarkAttendance()">
-          📸 Instant Mark
-        </button>
-        -->
-      <div id="instant-mark-loading" class="att-spinner" style="display: none; width: 20px; height: 20px; margin-left: 8px;"></div>
-      </div>
     </div>
 
-    <div id="attendance-summary"
-      style="display:grid; grid-template-columns:repeat(3,minmax(170px,1fr)); gap:14px; margin-bottom:16px;">
-      <div class="att-card">
-        <div class="att-label">Total Logs</div>
-        <div class="att-value" id="sum-total">0</div>
-      </div>
-      <div class="att-card">
-        <div class="att-label">Members Present Today</div>
-        <div class="att-value" id="sum-staff">0</div>
-      </div>
-      <div class="att-card">
-        <div class="att-label">Total Today Records</div>
-        <div class="att-value" id="sum-today">0</div>
-      </div>
+    <!-- Filters & Main Table -->
+    <div class="saas-card" style="padding: 0; overflow: hidden; margin-bottom: var(--s-6);">
+        <div style="padding: var(--s-4) var(--s-6); border-bottom: 1px solid var(--border-main); background: var(--bg-surface-alt); display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px; position: relative;">
+                <i data-lucide="search" style="position: absolute; left: var(--s-4); top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-tertiary);"></i>
+                <input type="search" id="att-search" class="saas-input" style="padding-left: var(--s-10);" placeholder="Search by name, ID, or channel..." oninput="debouncedLoadAttendance()" autocomplete="new-password">
+            </div>
+            
+            <div style="width: 260px; position: relative;">
+                <i data-lucide="calendar" style="position: absolute; left: var(--s-4); top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-tertiary);"></i>
+                <input id="att-date-range" type="text" class="saas-input" style="padding-left: var(--s-10);" readonly placeholder="Select Date Range">
+            </div>
+        </div>
+
+        <div id="view-events" style="overflow-x: auto;">
+            <table class="saas-table">
+                <thead>
+                    <tr>
+                        <th style="font-size: 11px;">Member ID</th>
+                        <th style="font-size: 11px;">Member</th>
+                        <th style="font-size: 11px;">First Entry</th>
+                        <th style="font-size: 11px; width: 60px;">In</th>
+                        <th style="font-size: 11px;">Last Exit</th>
+                        <th style="font-size: 11px; width: 60px;">Out</th>
+                        <th style="font-size: 11px;">Status</th>
+                        <th style="font-size: 11px;">Time</th>
+                        <th style="font-size: 11px;">In Camera</th>
+                        <th style="font-size: 11px;">Out Camera</th>
+                        <th style="font-size: 11px;">Phone</th>
+                        <th style="font-size: 11px;">Date</th>
+                        <th style="width: 40px; text-align: center;"></th>
+                    </tr>
+                </thead>
+                <tbody id="attendance-table-body">
+                    <tr>
+                        <td colspan="13" style="padding: var(--s-10); text-align: center; color: var(--text-tertiary);">
+                            <div class="saas-spinner" style="margin: 0 auto var(--s-4);"></div>
+                            Establishing connection to audit log...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="att-pagination-container" style="padding: var(--s-4) var(--s-6); border-top: 1px solid var(--border-main); background: var(--bg-surface-alt); display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text-tertiary);">
+        </div>
     </div>
-
-    <div class="att-filter-row">
-      <div class="att-search-wrap" style="position:relative; min-width:0;">
-        <span
-          style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color: var(--muted);">🔍</span>
-        <input id="att-search" type="text" class="att-input" placeholder="Search by member name, email, phone..."
-          style="padding-left:36px;" oninput="debouncedLoadAttendance()" />
-      </div>
-      <div class="att-range-wrap">
-        <span style="font-size:15px;">📅</span>
-        <input id="att-date-range" type="text" class="att-input" readonly placeholder="Pick a date range" />
-      </div>
-      <!-- Status filter removed as it's no longer used in the new schema -->
-    </div>
-
-    <div id="view-events">
-      <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden;">
-        <table style="width:100%; border-collapse:collapse;">
-          <thead style="background: var(--surface2);">
-            <tr>
-              <th class="log-th">Member ID</th>
-              <th class="att-th">Member</th>
-              <th class="att-th">First Entry</th>
-              <th class="att-th">In</th>
-              <th class="att-th">Last Exit</th>
-              <th class="att-th">Out</th>
-              <th class="att-th">Status</th>
-              <th class="att-th">Time</th>
-              <th class="att-th">In Camera</th>
-              <th class="att-th">Out Camera</th>
-              <th class="att-th">Phone</th>
-              <th class="att-th">Date</th>
-            </tr>
-          </thead>
-          <tbody id="attendance-table-body">
-            <tr>
-              <td colspan="11" class="att-empty">Loading attendance records...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div id="att-pagination-container"
-        style="margin-top:16px; padding:12px 14px; background: var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--muted);">
-      </div>
-    </div><!-- /view-events -->
-
-    <!-- Forensic Images View -->
-    <div id="view-forensics" style="display:none;">
-      <div class="forensics-filter-row">
-        <input id="forensics-search" type="text" class="att-input" placeholder="Search by staff name..."
-          style="max-width:280px;" oninput="loadForensics()" />
-        <input id="forensics-date" type="date" class="att-input" style="width:160px;" onchange="loadForensics()" />
-      </div>
-      <div id="forensics-grid" class="forensics-grid">
-        <div class="att-empty" style="padding:40px; text-align:center; color:var(--muted);">Select a date to load
-          forensic records.</div>
-      </div>
-    </div>
-  </div>
 </div>
 
-<!-- Attendance Details Modal -->
+<!-- Details Drawer/Modal -->
 <div id="att-details-modal" class="modal-overlay">
-  <div class="modal-content" style="max-width: 800px; width: 90%;">
-    <div class="modal-header">
-      <h3 id="modal-title" style="margin:0; font-size:18px;">Attendance Session Details</h3>
-      <button class="close-btn" onclick="closeAttDetails()">✕</button>
+    <div class="saas-card" style="max-width: 800px; width: 95%; padding: 0; overflow: hidden; animation: slideUp 0.3s ease;">
+        <div style="padding: var(--s-5) var(--s-6); border-bottom: 1px solid var(--border-main); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-alt);">
+            <h3 class="heading" style="font-size: 18px;">Audit Traceability Details</h3>
+            <button class="icon-btn" onclick="closeAttDetails()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body" id="modal-body-content" style="padding: var(--s-8);">
+            <!-- Populated via JS -->
+        </div>
+        <div id="modal-footer-timeline" style="padding: var(--s-8); border-top: 1px solid var(--border-main); display: none; background: var(--bg-surface-alt);">
+            <h4 class="heading" style="font-size: 13px; margin-bottom: var(--s-4); text-transform: uppercase; color: var(--text-tertiary);">Activity Timeline</h4>
+            <div id="att-timeline-container" style="display: flex; gap: var(--s-4); overflow-x: auto; padding-bottom: var(--s-4);">
+                <!-- Timeline items -->
+            </div>
+        </div>
     </div>
-    <div class="modal-body" id="modal-body-content">
-      <!-- Content populated by JS -->
-    </div>
-  </div>
-</div>
-
-<!-- Attendance Details Modal -->
-<div id="att-details-modal" class="modal-overlay">
-  <div class="modal-content" style="max-width: 800px; width: 90%;">
-    <div class="modal-header">
-      <h3 id="modal-title" style="margin:0; font-size:18px;">Attendance Session Details</h3>
-      <button class="close-btn" onclick="closeAttDetails()">✕</button>
-    </div>
-    <div class="modal-body" id="modal-body-content">
-      <!-- Content populated by JS -->
-    </div>
-    <div id="modal-footer-timeline" style="padding: 0 24px 24px 24px; border-top: 1px solid var(--border); display: none;">
-       <h4 style="margin: 20px 0 12px 0; font-size: 14px;">Activity Timeline</h4>
-       <div id="att-timeline-container" style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px;">
-          <!-- Timeline items -->
-       </div>
-    </div>
-  </div>
 </div>
 
 <style>
-  .att-card {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px 18px;
-  }
-
-  .att-label {
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 8px;
-    font-weight: 600;
-  }
-
-  .att-value {
-    font-size: 24px;
-    color: var(--text);
-    font-weight: 800;
-    line-height: 1;
-  }
-
-  .att-input {
-    width: 100%;
-    padding: 9px 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 13px;
-    outline: none;
-  }
-
-  .att-input:focus {
-    border-color: var(--accent);
-  }
-
-  .att-filter-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 16px;
-    flex-wrap: nowrap;
-  }
-
-  .att-search-wrap {
-    flex: 1 1 auto;
-    max-width: 560px;
-  }
-
-  .att-range-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg);
-    padding: 0 10px;
-    min-width: 230px;
-  }
-
-  .att-range-wrap .att-input {
-    border: none;
-    background: transparent;
-    padding: 9px 0;
-    cursor: pointer;
-  }
-
-  .att-range-wrap:focus-within {
-    border-color: var(--accent);
-  }
-
-  .att-th {
-    text-align: left;
-    font-size: 12px;
-    color: var(--muted);
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border);
-    text-transform: uppercase;
-  }
-
-  .att-td {
-    padding: 12px 14px;
-    font-size: 13px;
-    color: var(--text);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .att-empty {
-    padding: 30px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .badge-status {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 999px;
-    padding: 4px 10px;
-  }
-
-  .badge-in {
-    background: var(--success-bg);
-    color: var(--green);
-  }
-
-  .badge-out {
-    background: var(--surface2);
-    color: var(--muted);
-  }
-
-  .att-clickable-row {
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .att-clickable-row:hover {
-    background: var(--surface2);
-  }
-
-  .period-toggle {
-    display: flex;
-    background: var(--surface2);
-    padding: 4px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-  }
-
-  .toggle-btn {
-    border: none;
-    background: transparent;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    cursor: pointer;
-    border-radius: 7px;
-    transition: all 0.2s;
-  }
-
-  .toggle-btn.active {
-    background: var(--surface);
-    color: var(--accent);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .att-action-menu {
-    position: relative;
-    display: inline-flex;
-    justify-content: center;
-    width: 100%;
-  }
-
-  .att-actions-btn {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    font-size: 18px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-
-  .att-actions-btn:hover {
-    background: var(--bg);
-    color: var(--text);
-  }
-
-  .att-action-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    min-width: 120px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--shadow-lg);
-    display: none;
-    z-index: 15;
-    overflow: hidden;
-  }
-
-  .att-action-dropdown.active {
-    display: block;
-  }
-
-  .att-action-item {
-    width: 100%;
-    border: none;
-    background: transparent;
-    color: var(--text);
-    text-align: left;
-    padding: 9px 12px;
-    cursor: pointer;
-    font-size: 13px;
-  }
-
-  .att-action-item:hover {
-    background: var(--surface2);
-  }
-
-  /* Modal Styles */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 20px;
-  }
-
-  .modal-overlay.active {
-    display: flex;
-  }
-
-  .modal-content {
-    background: var(--surface);
-    border-radius: 16px;
-    box-shadow: var(--shadow-lg);
-    border: 1px solid var(--border);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    max-height: 90vh;
-  }
-
-  .modal-header {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .modal-body {
-    padding: 24px;
-    overflow-y: auto;
-  }
-
-  .close-btn {
-    background: none;
-    border: none;
-    font-size: 20px;
-    color: var(--muted);
-    cursor: pointer;
-  }
-
-  .close-btn:hover {
-    color: var(--text);
-  }
-
-  .details-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-  }
-
-  .details-info {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .details-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-
-  .details-value {
-    font-size: 14px;
-    color: var(--text);
-    font-weight: 500;
-  }
-
-  .details-img-box {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--surface2);
-    aspect-ratio: 16/9;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .details-img-box img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .no-img-text {
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  @media (max-width: 1100px) {
-    .att-filter-row {
-      flex-wrap: wrap;
-    }
-
-    .att-search-wrap {
-      max-width: none;
-      width: 100%;
-    }
-  }
-
-  @media (max-width: 768px) {
-    .details-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .att-view-tabs {
-    display: flex;
-    gap: 2px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 3px;
-  }
-
-  .att-view-tab {
-    padding: 5px 14px;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    background: none;
-    cursor: pointer;
-    transition: all .15s;
-  }
-
-  .att-view-tab.active {
-    background: var(--surface);
-    color: var(--accent);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .forensics-filter-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-
-  .forensics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 16px;
-  }
-
-  .forensic-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: box-shadow .15s;
-  }
-
-  .forensic-card:hover {
-    box-shadow: var(--shadow-md);
-  }
-
-  .forensic-card-header {
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .forensic-name {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .forensic-time {
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .forensic-images {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: var(--border);
-  }
-
-  .forensic-images.has-merged {
-    grid-template-columns: 1fr;
-  }
-
-  .forensic-img-wrap {
-    background: var(--surface2);
-    aspect-ratio: 16/9;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .forensic-img-wrap img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .forensic-img-label {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 3px 6px;
-    background: rgba(0, 0, 0, .55);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-  }
-
-  .forensic-img-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .forensic-card-footer {
-    padding: 8px 14px;
-    font-size: 11px;
-    color: var(--muted);
-    display: flex;
-    gap: 12px;
-  }
-
-  .secondary-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: border-color .15s;
-  }
-
-  .secondary-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .secondary-btn:disabled {
-    opacity: .4;
-    cursor: not-allowed;
-  }
+.nav-pill { padding: 6px 14px; border-radius: var(--radius-md); border: none; background: transparent; color: var(--text-tertiary); font-weight: 700; cursor: pointer; transition: all 0.2s ease; font-size: 12px; }
+.nav-pill.active { background: var(--bg-surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+.pagination-btn { padding: 4px 10px; border-radius: 6px; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-secondary); cursor: pointer; }
+.pagination-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text-primary); }
 </style>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <script>
-  let attendanceSearchTimer = null;
-  let attCurrentPage = 1;
-  let attPageSize = 10;
-  let attTotalRecords = 0;
-  let attSummaryHidden = false;
-  let attPeriod = 'all';
+let attendanceSearchTimer = null;
+let attCurrentPage = 1;
+let attPageSize = 10;
+let attTotalRecords = 0;
+let attPeriod = 'all';
 
-  function debouncedLoadAttendance() {
+document.addEventListener('DOMContentLoaded', () => {
+    initDateRangePicker();
+    loadAttendance();
+});
+
+function debouncedLoadAttendance() {
     clearTimeout(attendanceSearchTimer);
     attendanceSearchTimer = setTimeout(() => { attCurrentPage = 1; loadAttendance(); }, 300);
-  }
+}
 
-  function toggleAttendanceSummary() {
-    attSummaryHidden = !attSummaryHidden;
-    const section = document.getElementById('attendance-summary');
-    const btn = document.getElementById('toggle-att-summary-btn');
-    section.style.display = attSummaryHidden ? 'none' : 'grid';
-    btn.innerHTML = attSummaryHidden ? '<span>⌄</span> Show Summary' : '<span>⌃</span> Hide Summary';
-  }
-
-  function exportAttendance(format) {
-    const { dateFrom, dateTo } = getDateRangeValues();
+async function loadAttendance() {
     const q = document.getElementById('att-search').value.trim();
+    const { dateFrom, dateTo } = getDateRangeValues();
+    
     const params = new URLSearchParams();
-    params.set('format', format || 'excel');
+    params.set('page', attCurrentPage);
+    params.set('page_size', attPageSize);
     params.set('period', attPeriod);
+    if (q) params.set('q', q);
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
-    if (q) params.set('q', q);
-    window.location.href = '/api/attendance/export?' + params.toString();
-  }
 
-  function setAttPeriod(period) {
-    attPeriod = period === 'today' ? 'today' : 'all';
-    document.querySelectorAll('.period-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(`att-period-${attPeriod}`).classList.add('active');
-
-    const rangeWrap = document.querySelector('.att-range-wrap');
-    const rangeInput = document.getElementById('att-date-range');
-    if (attPeriod === 'today') {
-      rangeWrap.style.opacity = '0.5';
-      rangeWrap.style.pointerEvents = 'none';
-
-      // Use local date (YYYY-MM-DD)
-      const now = new Date();
-      const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-      
-      if (rangeInput) rangeInput.value = localToday;
-      if (rangeInput?._flatpickr) {
-        rangeInput._flatpickr.setDate(localToday);
-      }
-    } else {
-      rangeWrap.style.opacity = '1';
-      rangeWrap.style.pointerEvents = 'auto';
-      // Clear the date picker when switching to 'All' to avoid being stuck on 'Today'
-      if (rangeInput) rangeInput.value = '';
-      if (rangeInput?._flatpickr) rangeInput._flatpickr.clear();
-    }
-    attCurrentPage = 1;
-    loadAttendance();
-  }
-
-  function setAttPageSize(val) {
-    attPageSize = parseInt(val, 10) || 10;
-    attCurrentPage = 1;
-    loadAttendance();
-  }
-
-  function changeAttPage(page) {
-    const totalPages = Math.ceil(attTotalRecords / attPageSize) || 1;
-    attCurrentPage = Math.max(1, Math.min(page, totalPages));
-    loadAttendance();
-  }
-
-  function renderAttPagination(totalItems) {
-    const container = document.getElementById('att-pagination-container');
-    if (!container) return;
-    attTotalRecords = totalItems || 0;
-    if (attTotalRecords === 0) {
-      container.innerHTML = '';
-      return;
-    }
-    const totalPages = Math.ceil(attTotalRecords / attPageSize) || 1;
-    if (attCurrentPage > totalPages) attCurrentPage = totalPages;
-    const start = (attCurrentPage - 1) * attPageSize + 1;
-    const end = Math.min(attCurrentPage * attPageSize, attTotalRecords);
-
-    container.innerHTML = `
-      <div style="display:flex; align-items:center; gap:16px;">
-        <span>Showing ${start} - ${end} of ${attTotalRecords} records</span>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span>Rows per page:</span>
-          <select class="att-input" style="width:78px; padding:4px 6px;" onchange="setAttPageSize(this.value)">
-            <option value="10" ${attPageSize === 10 ? 'selected' : ''}>10</option>
-            <option value="20" ${attPageSize === 20 ? 'selected' : ''}>20</option>
-            <option value="50" ${attPageSize === 50 ? 'selected' : ''}>50</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span style="margin-right:6px;">Page ${attCurrentPage} of ${totalPages}</span>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(1)" ${attCurrentPage === 1 ? 'disabled' : ''}>«</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${attCurrentPage - 1})" ${attCurrentPage === 1 ? 'disabled' : ''}>‹</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${attCurrentPage + 1})" ${attCurrentPage === totalPages ? 'disabled' : ''}>›</button>
-        <button class="secondary-btn" style="padding:4px 10px;" onclick="changeAttPage(${totalPages})" ${attCurrentPage === totalPages ? 'disabled' : ''}>»</button>
-      </div>
-    `;
-  }
-
-  function getDateRangeValues() {
-    const rangeInput = document.getElementById('att-date-range');
-    const picker = rangeInput?._flatpickr;
-    if (picker && picker.selectedDates.length) {
-      const from = picker.selectedDates[0] ? picker.formatDate(picker.selectedDates[0], "Y-m-d") : "";
-      const to = picker.selectedDates[1] ? picker.formatDate(picker.selectedDates[1], "Y-m-d") : from;
-      return { dateFrom: from, dateTo: to };
-    }
-    const raw = (rangeInput.value || "").trim();
-    if (!raw) return { dateFrom: "", dateTo: "" };
-    const parts = raw.split(" to ");
-    return { dateFrom: parts[0] || "", dateTo: parts[1] || parts[0] || "" };
-  }
-
-  function initDateRangePicker() {
-    const rangeInput = document.getElementById('att-date-range');
-    if (!rangeInput) return;
-    if (window.flatpickr) {
-      flatpickr(rangeInput, {
-        mode: "range",
-        dateFormat: "Y-m-d",
-        onClose: () => { attCurrentPage = 1; loadAttendance(); },
-      });
-      return;
-    }
-    rangeInput.readOnly = false;
-  }
-
-  function fmtDateTime(value) {
-    if (!value) return '-';
-    if (typeof value === 'string') {
-      // Handle our standard TO_CHAR format: YYYY-MM-DD HH:MM:SS
-      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return value;
-
-      // Handle raw ISO format from API (YYYY-MM-DDTHH:MM:SS...)
-      // Strip 'T', milliseconds, and timezone offsets to prevent shift
-      if (value.includes('T')) {
-        return value.replace('T', ' ').split('.')[0].split('+')[0].split('Z')[0];
-      }
-
-      // If it's already "pretty" (like the user sees now), but we want to avoid further shifts
-      if (value.includes(',') && (value.includes('pm') || value.includes('am'))) return value;
-    }
-
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleString();
-  }
-  function fmtTime(value) {
-    if (!value) return '-';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-  function fmtDate(value) {
-    if (!value) return '-';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
-  }
-
-  function setSummary(summary) {
-    document.getElementById('sum-total').innerText = summary?.total_records ?? 0;
-    document.getElementById('sum-staff').innerText = summary?.total_staff ?? 0;
-    document.getElementById('sum-today').innerText = summary?.today_total ?? 0;
-  }
-
-  function calcDuration(start, end) {
-    if (!start || !end) return '-';
-    const s = new Date(start);
-    const e = new Date(end);
-    const diff = e - s;
-    if (diff < 0) return '-';
-    const mins = Math.floor(diff / 60000);
-    const hrs = Math.floor(mins / 60);
-    const remMins = mins % 60;
-    return hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`;
-  }
-
-  async function openAttDetails(r) {
-    const modal = document.getElementById('att-details-modal');
-    const content = document.getElementById('modal-body-content');
-    const timelineSection = document.getElementById('modal-footer-timeline');
-    const timelineContainer = document.getElementById('att-timeline-container');
-
-    content.innerHTML = `
-      <div class="details-grid">
-        <div class="details-info">
-          <div><div class="details-label">Member Name</div><div class="details-value" style="font-size:18px; font-weight:700;">${r.name || 'Unknown'}</div></div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <div><div class="details-label">Member ID</div><div class="details-value">${r.display_id || '-'}</div></div>
-            <div><div class="details-label">Phone</div><div class="details-value">${r.phone || '-'}</div></div>
-          </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <div><div class="details-label">In Time</div><div class="details-value">${fmtDateTime(r.in_time)}</div></div>
-            <div><div class="details-label">Out Time</div><div class="details-value">${fmtDateTime(r.out_time)}</div></div>
-          </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <div><div class="details-label">Stay Duration</div><div class="details-value" style="color:var(--accent); font-weight:700;">${calcDuration(r.in_time, r.out_time)}</div></div>
-            <div><div class="details-label">Current Status</div><span class="badge-status ${r.status === 'IN' ? 'badge-in' : 'badge-out'}">${r.status || '-'}</span></div>
-          </div>
-          <div class="details-label">Email</div><div class="details-value">${r.email || '-'}</div>
-          <div class="details-label">First Seen Camera (Entry)</div><div class="details-value">${r.entry_camera_name || r.camera_name || '-'}</div>
-          <div class="details-label">Last Seen Camera (Exit)</div><div class="details-value">${r.exit_camera_name || '-'}</div>
-        </div>
-        <div style="display:flex; flex-direction:column; gap:20px;">
-          <div>
-            <div class="details-label">Entry Verification Snapshot</div>
-            <div class="details-img-box">
-              ${r.in_image ? `<img src="/${r.in_image}" alt="In Image" onclick="window.open('/${r.in_image}', '_blank')">` : '<span class="no-img-text">No Entry Image Captured</span>'}
-            </div>
-          </div>
-          <div>
-            <div class="details-label">Exit Verification Snapshot</div>
-            <div class="details-img-box">
-              ${r.out_image ? `<img src="/${r.out_image}" alt="Out Image" onclick="window.open('/${r.out_image}', '_blank')">` : '<span class="no-img-text">No Exit Image Captured</span>'}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    modal.classList.add('active');
-
-    // Fetch Timeline
-    if (r.staff_id) {
-        timelineSection.style.display = 'block';
-        timelineContainer.innerHTML = '<div style="font-size:12px; color:var(--muted);">Loading timeline...</div>';
-        try {
-            const date = r.timestamp || new Date().toISOString().split('T')[0];
-            const res = await fetch(`/api/member-logs?staff_id=${r.staff_id}&date_from=${date}&date_to=${date}&limit=50`);
-            const data = await res.json();
-            if (data.status === 'success' && data.data.length) {
-                timelineContainer.innerHTML = data.data.reverse().map(log => `
-                    <div style="flex: 0 0 120px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface2);">
-                        <img src="${log.entry_image}" style="width: 100%; aspect-ratio: 4/3; object-fit: cover;">
-                        <div style="padding: 6px; font-size: 10px; text-align: center; border-top: 1px solid var(--border);">
-                            <div style="font-weight: 700;">${fmtTime(log.entry_time)}</div>
-                            <div style="color: var(--muted); font-size: 9px;">${log.camera_id || ''}</div>
-                        </div>
-                    </div>
-                `).join('');
-            } else {
-                timelineContainer.innerHTML = '<div style="font-size:12px; color:var(--muted);">No additional movements found.</div>';
-            }
-        } catch (e) {
-            timelineContainer.innerHTML = '<div style="font-size:12px; color:var(--red);">Error loading timeline.</div>';
-        }
-    } else {
-        timelineSection.style.display = 'none';
-    }
-  }
-
-  function closeAttDetails() {
-    document.getElementById('att-details-modal').classList.remove('active');
-  }
-
-  function openAttDetailsFromPayload(payload) {
     try {
-      openAttDetails(JSON.parse(decodeURIComponent(payload)));
-    } catch (error) {
-      console.error('Failed to open attendance details:', error);
-    }
-  }
+        const res = await fetch('/api/attendance/records?' + params.toString());
+        const data = await res.json();
+        if (data.success) {
+            renderTable(data.records);
+            renderPagination(data.pagination.total_records);
+            renderSummary(data.summary);
+        } else {
+            console.error("API Error:", data.error);
+        }
+    } catch (e) { console.error(e); }
+}
 
-  function closeAttActionMenus() {
-    document.querySelectorAll('.att-action-dropdown.active').forEach(m => m.classList.remove('active'));
-  }
+function formatAttTime(t) {
+    if (!t || t === "-" || typeof t !== 'string') return "—";
+    const parts = t.split(' ');
+    return parts.length > 1 ? parts[1] : t;
+}
 
-  function toggleAttActionMenu(event, menuId) {
-    event.stopPropagation();
-    const menu = document.getElementById(menuId);
-    if (!menu) return;
-    const alreadyOpen = menu.classList.contains('active');
-    closeAttActionMenus();
-    if (!alreadyOpen) menu.classList.add('active');
-  }
-
-  function renderAttendanceRows(records) {
+function renderTable(records) {
     const tbody = document.getElementById('attendance-table-body');
     if (!records || !records.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="att-empty">No attendance records found.</td></tr>';
-      return;
+        tbody.innerHTML = '<tr><td colspan="13" style="padding: 40px; text-align: center; color: var(--text-tertiary);">No AI-based audit logs identified for this query.</td></tr>';
+        return;
     }
 
-    tbody.innerHTML = records.map((r, idx) => {
-      const payload = encodeURIComponent(JSON.stringify(r));
-      const statusClass = r.status === 'OUT' ? 'badge-out' : 'badge-in';
-      const statusText = r.status || 'PRESENT';
-
-      return `
-      <tr class="att-clickable-row" onclick="openAttDetailsFromPayload('${payload}')">
-        <td class="att-td"><span style="font-family:monospace; font-weight:600; color:var(--accent);">${r.display_id || '-'}</span></td>
-        <td class="att-td"><strong>${r.name || '-'}</strong><div style="font-size:11px; color:var(--muted);">${r.email || ''}</div></td>
-        <td class="att-td">${fmtDateTime(r.in_time)}</td>
-        <td class="att-td">
-          ${r.in_image ? `<img src="${r.in_image.startsWith('/') ? r.in_image : '/' + r.in_image}" style="height:32px; width:45px; object-fit:cover; border-radius:4px; border:1px solid var(--border);" onerror="this.style.display='none'">` : '-'}
-        </td>
-        <td class="att-td">${fmtDateTime(r.out_time)}</td>
-        <td class="att-td">
-          ${r.out_image ? `<img src="${r.out_image.startsWith('/') ? r.out_image : '/' + r.out_image}" style="height:32px; width:45px; object-fit:cover; border-radius:4px; border:1px solid var(--border);" onerror="this.style.display='none'">` : '-'}
-        </td>
-        <td class="att-td"><span class="badge-status ${statusClass}">${statusText}</span></td>
-        <td class="att-td" style="white-space:nowrap;">${r.timestamp || '-'}</td>
-        <td class="att-td">${r.entry_camera_name || r.camera_name || '—'}</td>
-        <td class="att-td">${r.exit_camera_name || '—'}</td>
-        <td class="att-td">${r.phone || '-'}</td>
-        <td class="att-td" style="font-size:12px; color:var(--muted);">${fmtDate(r.timestamp)}</td>
-      </tr>
-      `;
+    tbody.innerHTML = records.map(r => {
+        const in_img_url = r.in_image ? (r.in_image.startsWith('/') ? r.in_image : '/api/member-log-image?path=' + encodeURIComponent(r.in_image)) : '';
+        const out_img_url = r.out_image ? (r.out_image.startsWith('/') ? r.out_image : '/api/member-log-image?path=' + encodeURIComponent(r.out_image)) : '';
+        
+        return `
+            <tr class="clickable-row" onclick="viewAttDetails(${r.id})">
+                <td style="font-family: 'JetBrains Mono'; font-size: 11px; color: var(--accent); font-weight: 600;">${r.display_id || 'UNKNOWN'}</td>
+                <td style="font-weight: 700;">${r.name}</td>
+                <td>
+                    <div style="font-size: 12px; font-weight: 500;">${formatAttTime(r.in_time)}</div>
+                </td>
+                <td>
+                    ${in_img_url ? `<img src="${in_img_url}" style="width: 40px; height: 30px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border-light);">` : '—'}
+                </td>
+                <td>
+                    <div style="font-size: 12px; font-weight: 500;">${formatAttTime(r.out_time)}</div>
+                </td>
+                <td>
+                    ${out_img_url ? `<img src="${out_img_url}" style="width: 40px; height: 30px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border-light);">` : '—'}
+                </td>
+                <td>
+                    <span class="status-badge ${r.status === 'IN' ? 'status-success' : 'status-error'}" style="width: 45px; text-align: center; font-size: 10px; padding: 2px 0;">
+                        ${r.status}
+                    </span>
+                </td>
+                <td style="font-size: 11px;">${formatAttTime(r.in_time)}</td>
+                <td style="font-size: 11px; color: var(--text-tertiary); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.camera_name}">${r.camera_name || 'N/A'}</td>
+                <td style="font-size: 11px; color: var(--text-tertiary); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.out_camera}">${r.out_camera || '—'}</td>
+                <td style="font-size: 11px;">${r.phone || '—'}</td>
+                <td style="font-size: 11px; white-space: nowrap;">${r.timestamp}</td>
+                <td style="text-align: center;">
+                    <button class="icon-btn" onclick="event.stopPropagation(); viewAttDetails(${r.id})"><i data-lucide="eye"></i></button>
+                </td>
+            </tr>
+        `;
     }).join('');
-  }
+    lucide.createIcons();
+}
 
-  function renderAttendanceSkeletons() {
-    const tbody = document.getElementById('attendance-table-body');
-    const cols = 9;
-    const rows = 8;
-    let html = '';
-    for (let i = 0; i < rows; i++) {
-      html += `<tr class="skeleton-row">`;
-      for (let j = 0; j < cols; j++) {
-        const width = (Math.random() * 40 + 40) + '%';
-        html += `<td><div class="skeleton-box" style="width: ${width};"></div></td>`;
-      }
-      html += `</tr>`;
-    }
-    tbody.innerHTML = html;
-    tbody.classList.add('loading-state');
-  }
-
-  async function loadAttendance() {
-    const { dateFrom, dateTo } = getDateRangeValues();
-    const q = document.getElementById('att-search').value.trim();
-
-    const params = new URLSearchParams();
-    if (dateFrom) params.set('date_from', dateFrom);
-    if (dateTo) params.set('date_to', dateTo);
-    if (q) params.set('q', q);
-    params.set('period', attPeriod);
-    params.set('page', String(attCurrentPage));
-    params.set('page_size', String(attPageSize));
-
-    const tbody = document.getElementById('attendance-table-body');
-    if (tbody.children.length === 0 || tbody.querySelector('.att-empty')) {
-      renderAttendanceSkeletons();
-    } else {
-      tbody.classList.add('loading-state');
-    }
-
-    try {
-      const res = await fetch('/api/attendance/records?' + params.toString());
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to load attendance');
-      }
-
-      tbody.classList.remove('loading-state');
-      tbody.classList.remove('fade-in');
-      void tbody.offsetWidth; // trigger reflow
-      tbody.classList.add('fade-in');
-
-      setSummary(data.summary || {});
-      renderAttendanceRows(data.records || []);
-      renderAttPagination((data.pagination && data.pagination.total_records) || 0);
-    } catch (e) {
-      tbody.classList.remove('loading-state');
-      tbody.innerHTML = `<tr><td colspan="9" class="att-empty" style="color: var(--red);">Failed to load attendance: ${e.message}</td></tr>`;
-      setSummary({ total_records: 0, total_in: 0, total_out: 0, today_total: 0 });
-      renderAttPagination(0);
-    }
-  }
-
-  let currentView = 'events';
-
-  function switchView(view) {
-    currentView = view;
-    document.getElementById('view-events').style.display    = view === 'events'    ? 'block' : 'none';
-    document.getElementById('view-forensics').style.display = view === 'forensics' ? 'block' : 'none';
-    if (document.getElementById('tab-events')) document.getElementById('tab-events').classList.toggle('active',    view === 'events');
-    if (document.getElementById('tab-forensics')) document.getElementById('tab-forensics').classList.toggle('active', view === 'forensics');
-    if (view === 'forensics') {
-      // Default to today
-      const d = document.getElementById('forensics-date');
-      if (!d.value) d.value = new Date().toISOString().split('T')[0];
-      loadForensics();
-    }
-  }
-
-  async function loadForensics() {
-    const grid = document.getElementById('forensics-grid');
-    const name = (document.getElementById('forensics-search').value || '').trim();
-    const date = document.getElementById('forensics-date').value;
-    grid.innerHTML = '<div class="att-empty" style="padding:40px;text-align:center;color:var(--muted);">Loading...</div>';
-    const params = new URLSearchParams();
-    if (name) params.set('staff_name', name);
-    if (date) params.set('date', date);
-    params.set('limit', '30');
-    try {
-      const r = await fetch('/api/attendance/forensics?' + params.toString());
-      const d = await r.json();
-      if (!d.success) throw new Error(d.error);
-      renderForensics(d.records || []);
-    } catch(e) {
-      grid.innerHTML = `< div class="att-empty" style = "padding:40px;text-align:center;color:var(--red);" > Failed: ${ e.message }</div > `;
-    }
-  }
-
-  function renderForensics(records) {
-    const grid = document.getElementById('forensics-grid');
-    if (!records.length) {
-      grid.innerHTML = '<div class="att-empty" style="padding:40px;text-align:center;color:var(--muted);">No forensic records found for this date.</div>';
-      return;
-    }
-    grid.innerHTML = records.map(r => {
-      const entryTime = r.entry_time ? new Date(r.entry_time).toLocaleTimeString() : '—';
-      const exitTime  = r.exit_time  ? new Date(r.exit_time).toLocaleTimeString()  : 'Still in';
-      const hasMerged = !!r.merged_image;
-      const imgSection = hasMerged ? `
-        < div class="forensic-images has-merged" >
-          <div class="forensic-img-wrap">
-            <img src="${r.merged_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\" forensic-img-placeholder\">Image not found</div>'" />
-              < div class="forensic-img-label" > ENTRY → EXIT</div >
-          </div >
-        </div > ` : `
-        < div class="forensic-images" >
-          <div class="forensic-img-wrap">
-            ${r.entry_image
-              ? `<img src="${r.entry_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">No image</div>'" /><div class="forensic-img-label">🟢 ENTRY</div>`
-              : `<div class="forensic-img-placeholder">No entry image</div>`}
-          </div>
-          <div class="forensic-img-wrap">
-            ${r.exit_image
-              ? `<img src="${r.exit_image}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\"forensic-img-placeholder\">No image</div>'" /><div class="forensic-img-label">🔴 EXIT</div>`
-              : `<div class="forensic-img-placeholder">No exit image</div>`}
-          </div>
-        </div > `;
-      return `
-        < div class="forensic-card" >
-          <div class="forensic-card-header">
-            <div class="forensic-name">${r.staff_name || 'Unknown'}</div>
-            <div class="forensic-time">${entryTime}</div>
-          </div>
-          ${ imgSection }
-      <div class="forensic-card-footer">
-        <span>📹 ${r.camera_name || '—'}</span>
-        <span>🟢 ${entryTime}</span>
-        <span>🔴 ${exitTime}</span>
-      </div>
-        </div >`;
-    }).join('');
-  }
-
-
-  async function instantMarkAttendance() {
-    const btn = document.getElementById('instant-mark-btn');
-    const loading = document.getElementById('instant-mark-loading');
-    if (!btn) return;
+function renderPagination(total) {
+    attTotalRecords = total;
+    const pages = Math.ceil(total / attPageSize) || 1;
+    const cont = document.getElementById('att-pagination-container');
+    if (total === 0) { cont.innerHTML = ''; return; }
     
-    btn.disabled = true;
-    const oldText = btn.innerText;
-    btn.innerText = '⌛ Processing...';
-    loading.style.display = 'inline-block';
+    const start = (attCurrentPage - 1) * attPageSize + 1;
+    const end = Math.min(attCurrentPage * attPageSize, total);
 
-    try {
-      const res = await fetch('/api/attendance/instant_mark', { method: 'POST' });
-      const data = await res.json();
-
-      if (data.success) {
-        showAttToast(`✅ ${data.message}`, 'success');
-        loadAttendance(); // Refresh table
-      } else {
-        showAttToast(`❌ ${data.error || 'Failed to mark attendance'}`, 'error');
-      }
-    } catch (e) {
-      showAttToast(`❌ Error: ${e.message}`, 'error');
-    } finally {
-      btn.disabled = false;
-      btn.innerText = oldText;
-      loading.style.display = 'none';
-    }
-  }
-
-  function showAttToast(msg, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `att-toast ${type}`;
-    toast.style.cssText = `
-      position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; 
-      background: ${type==='error'?'#fee2e2':'#ecfdf5'}; 
-      color: ${type==='error'?'#ef4444':'#10b981'};
-      border: 1px solid ${type==='error'?'#fecaca':'#d1fae5'};
-      border-radius: 10px; font-size: 14px; font-weight: 600; 
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 9999;
-      animation: slideIn 0.3s ease-out;
+    cont.innerHTML = `
+        <span>Audit Records: <strong>${start} - ${end}</strong> of <strong>${total}</strong> identified</span>
+        <div style="display: flex; gap: var(--s-4); align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 11px;">PAGE SCALE:</span>
+                <select class="saas-input" style="width: 80px; height: 28px; font-size: 11px; padding: 0 8px;" onchange="setAttPageSize(this.value)">
+                    <option value="10" ${attPageSize === 10 ? 'selected' : ''}>10 / PAGE</option>
+                    <option value="20" ${attPageSize === 20 ? 'selected' : ''}>20 / PAGE</option>
+                    <option value="50" ${attPageSize === 50 ? 'selected' : ''}>50 / PAGE</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="pagination-btn" onclick="changeAttPage(${attCurrentPage-1})" ${attCurrentPage===1?'disabled':''}><i data-lucide="chevron-left" style="width: 14px;"></i></button>
+                <span style="font-weight: 600;">${attCurrentPage} / ${pages}</span>
+                <button class="pagination-btn" onclick="changeAttPage(${attCurrentPage+1})" ${attCurrentPage===pages?'disabled':''}><i data-lucide="chevron-right" style="width: 14px;"></i></button>
+            </div>
+        </div>
     `;
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.5s';
-      setTimeout(() => toast.remove(), 500);
-    }, 4000);
-  }
+    lucide.createIcons();
+}
 
-  function initSSE() {
-    console.log("Initializing SSE for Attendance...");
-    const eventSource = new EventSource('/api/sse/stream');
+function renderSummary(s) {
+    document.getElementById('sum-total').innerText = s.total_records || 0;
+    document.getElementById('sum-staff').innerText = s.total_staff || 0;
+    document.getElementById('sum-today').innerText = s.today_total || 0;
+}
 
-    eventSource.onopen = () => {
-      console.log("SSE Connection opened.");
-      showAttToast("✅ Live Monitoring Active", "success");
-    };
-
-    eventSource.addEventListener('attendance_update', (e) => {
-      const data = JSON.parse(e.data);
-      console.log("Attendance update received:", data);
-      
-      // Notify only if first entry
-      if (data.is_first_entry) {
-        showAttToast(`👤 ${data.staff_name} marked present`, 'success');
-      }
-
-      const q = document.getElementById('att-search').value.trim();
-      if (attCurrentPage === 1 && !q) loadAttendance();
-    });
-
-    eventSource.addEventListener('member_log_update', (e) => {
-      // Even if not a staff entry, we can refresh the table if needed
-      // or at least show a "Human Detected" toast for feedback
-      const data = JSON.parse(e.data);
-      if (data.person_type === 'unknown') {
-         showAttToast("🔍 Person detected (Unknown)", "info");
-      }
-    });
-
-    eventSource.onerror = (err) => {
-      console.error("SSE Connection failed, retrying...", err);
-    };
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    initDateRangePicker();
-    document.addEventListener('click', closeAttActionMenus);
+function setAttPeriod(p) {
+    attPeriod = p;
+    document.querySelectorAll('.nav-pill').forEach(b => b.classList.remove('active'));
+    document.getElementById(`att-period-${p}`).classList.add('active');
+    attCurrentPage = 1;
     loadAttendance();
-    initSSE();
-  });
+}
+
+function setAttPageSize(v) { attPageSize = parseInt(v); attCurrentPage = 1; loadAttendance(); }
+function changeAttPage(p) { attCurrentPage = p; loadAttendance(); }
+
+function initDateRangePicker() {
+    flatpickr("#att-date-range", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        onChange: () => { attCurrentPage = 1; loadAttendance(); }
+    });
+}
+
+function getDateRangeValues() {
+    const val = document.getElementById('att-date-range').value;
+    if (!val.includes(' to ')) return { dateFrom: val, dateTo: val };
+    const [from, to] = val.split(' to ');
+    return { dateFrom: from, dateTo: to };
+}
+
+async function viewAttDetails(id) {
+    try {
+        const res = await fetch(`/api/attendance/${id}`);
+        const data = await res.json();
+        const body = document.getElementById('modal-body-content');
+        const isIn = (data.status === 'IN');
+        const statusLabel = isIn ? 'IN' : 'OUT';
+
+        let stayDuration = "-";
+        if (data.first_in_time !== "-" && data.last_out_time !== "-") {
+            const entry = new Date(data.first_in_time.replace(/-/g, '/'));
+            const exit = new Date(data.last_out_time.replace(/-/g, '/'));
+            const diff = Math.floor((exit - entry) / 1000);
+            if (diff > 0) {
+                const h = Math.floor(diff / 3600);
+                const m = Math.floor((diff % 3600) / 60);
+                const s = diff % 60;
+                stayDuration = `${h}h ${m}m ${s}s`;
+            }
+        }
+
+        body.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-10);">
+                <div style="display: flex; flex-direction: column; gap: var(--s-6);">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">MEMBER NAME</label>
+                            <div style="font-size: 18px; font-weight: 800; color: var(--text-primary);">${data.staff_name}</div>
+                        </div>
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">MEMBER ID</label>
+                            <div style="font-family: 'JetBrains Mono'; font-weight: 700; color: var(--accent);">${data.staff_id || '—'}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">PHONE</label>
+                            <div style="font-weight: 700;">${data.phone || '—'}</div>
+                        </div>
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">EMAIL</label>
+                            <div style="font-weight: 700; font-size: 13px;">${data.email || '—'}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">IN TIME</label>
+                            <div style="font-weight: 700; font-size: 13px;">${data.first_in_time}</div>
+                        </div>
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">OUT TIME</label>
+                            <div style="font-weight: 700; font-size: 13px;">${data.last_out_time}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">STAY DURATION</label>
+                            <div style="font-weight: 700; color: var(--accent);">${stayDuration}</div>
+                        </div>
+                        <div>
+                            <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">CURRENT STATUS</label>
+                            <span class="status-badge ${isIn ? 'status-success' : 'status-warning'}" style="width: 60px; text-align:center;">${statusLabel}</span>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
+                        <div>
+                            <label class="heading" style="font-size: 10px; color: var(--text-tertiary);">FIRST SEEN CAMERA (ENTRY)</label>
+                            <div style="display: flex; align-items: center; gap: var(--s-2); font-weight: 600; font-size: 12px;">
+                                <i data-lucide="video" style="width:12px; color:var(--accent);"></i>
+                                ${data.in_camera || 'System Array'}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="heading" style="font-size: 10px; color: var(--text-tertiary);">LAST SEEN CAMERA (EXIT)</label>
+                            <div style="display: flex; align-items: center; gap: var(--s-2); font-weight: 600; font-size: 12px;">
+                                <i data-lucide="video" style="width:12px; color:var(--accent);"></i>
+                                ${data.out_camera || '—'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: var(--s-4);">
+                    <div style="position: relative;">
+                        <label class="heading" style="font-size: 10px; color: var(--text-tertiary); position: absolute; top: -18px; left: 0;">ENTRY VERIFICATION SNAPSHOT</label>
+                        <div class="saas-card" style="padding: 0; aspect-ratio: 16/9; overflow: hidden; background: var(--bg-surface-alt); border-color: var(--border-light);">
+                           ${data.in_image ? `<img src="${data.in_image}" style="width: 100%; height: 100%; object-fit: cover;">` : '<div style="display:flex; height:100%; align-items:center; justify-content:center; color: var(--text-tertiary); font-size: 11px;">No Entry Image Captured</div>'}
+                        </div>
+                    </div>
+                    <div style="position: relative; margin-top: 15px;">
+                        <label class="heading" style="font-size: 10px; color: var(--text-tertiary); position: absolute; top: -18px; left: 0;">EXIT VERIFICATION SNAPSHOT</label>
+                        <div class="saas-card" style="padding: 0; aspect-ratio: 16/9; overflow: hidden; background: var(--bg-surface-alt); border-color: var(--border-light);">
+                           ${data.out_image && data.out_image !== '-' ? `<img src="${data.out_image}" style="width: 100%; height: 100%; object-fit: cover;">` : '<div style="display:flex; height:100%; align-items:center; justify-content:center; color: var(--text-tertiary); font-size: 11px;">No Exit Image Captured</div>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const footer = document.getElementById('modal-footer-timeline');
+        // Keep timeline for backwards compatibility and extra insight
+        if (data.timeline && data.timeline.length > 0) {
+            footer.style.display = 'block';
+            document.getElementById('att-timeline-container').innerHTML = data.timeline.map(t => `
+                <div class="saas-card" style="min-width: 140px; padding: var(--s-3); flex-shrink: 0; background: var(--bg-surface); border-color: ${t.type === 'IN' ? 'var(--success-soft)' : 'var(--error-soft)'}">
+                    <div style="font-size: 9px; font-weight: 800; color: ${t.type === 'IN' ? 'var(--success)' : 'var(--error)'}">${t.type}</div>
+                    <div style="font-size: 13px; font-weight: 700;">${t.time}</div>
+                    <div style="font-size: 10px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.camera_name}</div>
+                </div>
+            `).join('');
+        } else {
+            footer.style.display = 'none';
+        }
+
+        document.getElementById('att-details-modal').classList.add('active');
+        lucide.createIcons();
+    } catch (e) { console.error(e); }
+}
+
+function closeAttDetails() { document.getElementById('att-details-modal').classList.remove('active'); }
+
+function exportAttendance() {
+    const q = document.getElementById('att-search').value.trim();
+    const { dateFrom, dateTo } = getDateRangeValues();
+    const params = new URLSearchParams({ period: attPeriod, q, date_from: dateFrom, date_to: dateTo });
+    window.location.href = '/api/attendance/export?' + params.toString();
+}
 </script>
 {% endblock %}

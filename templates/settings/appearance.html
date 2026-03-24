@@ -3,166 +3,264 @@
 {% set sub_page = 'appearance' %}
 
 {% block content %}
-<div id="view-appearance" style="height: calc(100vh - 53px); overflow-y: auto; background: var(--bg); padding: 28px;">
-<div style="background: var(--surface); border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 32px 40px; min-height: calc(100vh - 53px - 56px);">
-  
-  <!-- Header -->
-  <div style="margin-bottom: 32px;">
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
-      <span style="font-size:24px;">🎨</span>
-      <h1 style="font-size:22px; font-weight:800; color: var(--text); margin:0;">Appearance Settings</h1>
-    </div>
-    <p style="font-size:13px; color: var(--muted); margin:0;">Customize the look and feel of your application</p>
-  </div>
-
-  <div style="display: grid; grid-template-columns: 1fr; gap: 32px; max-width: 900px;">
-    
-    <!-- ── Theme Mode ── -->
-    <div class="setting-block">
-      <div class="sb-header">
-        <div class="sb-title">Theme Mode</div>
-        <div class="sb-desc">Choose your preferred color theme</div>
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-        <div id="theme-light" class="theme-option" onclick="handleThemeSet('light')">
-          <span style="font-size: 24px; margin-bottom: 12px;">☀️</span>
-          <span style="font-weight: 600;">Light</span>
-        </div>
-        <div id="theme-dark" class="theme-option" onclick="handleThemeSet('dark')">
-          <span style="font-size: 24px; margin-bottom: 12px;">🌙</span>
-          <span style="font-weight: 600;">Dark</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Navigation ── -->
-    <div class="setting-block">
-      <div class="sb-header">
-        <div class="sb-title">Navigation Preferences</div>
-        <div class="sb-desc">Configure how you navigate the system</div>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 16px; padding: 16px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border);">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <div style="font-weight: 700; font-size: 14px; color: var(--text);">Show Breadcrumbs</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">Display navigation breadcrumbs at the top of pages</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="check-breadcrumbs" onchange="saveAppSetting('show_breadcrumbs', this.checked ? 'true' : 'false')">
-            <span class="slider round"></span>
-          </label>
-        </div>
-        <div style="height: 1px; background: var(--border); width: 100%;"></div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <div style="font-weight: 700; font-size: 14px; color: var(--text);">Enable Sidebar Toggle</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">Allow collapsing the sidebar from the top navigation menu</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="check-sidebar" onchange="saveAppSetting('sidebar_toggle', this.checked ? 'true' : 'false'); window.sidebarToggleEnabled = this.checked;">
-            <span class="slider round"></span>
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Branding ── -->
-    <div class="setting-block">
-      <div class="sb-header">
-        <div class="sb-title">Branding</div>
-        <div class="sb-desc">Manage logo, company name and favicon</div>
-      </div>
-      
-      <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
-        <div class="input-group">
-          <label>Company Name</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="set-company-name" placeholder="Enter company name" class="s-input">
-          </div>
-        </div>
-        
-        <div class="input-group">
-          <label>Logo URL</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="set-logo-url" placeholder="https://example.com/logo.png" class="s-input">
-            <input type="file" id="file-logo" style="display: none;" accept="image/*" onchange="uploadAsset('logo', this)">
-            <button class="btn" title="Upload Logo" style="background: var(--surface2); color: var(--text); padding: 10px; display: flex; align-items: center; justify-content: center;" onclick="document.getElementById('file-logo').click()">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            </button>
-          </div>
-          <div id="preview-logo-box" style="margin-top: 12px; display: none;">
-            <div style="font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Preview:</div>
-            <img id="img-preview-logo" src="" alt="Logo Preview" style="max-height: 60px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); padding: 8px; object-fit: contain;">
-          </div>
-        </div>
-
-        <div class="input-group">
-          <label>Favicon URL</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="set-favicon-url" placeholder="https://example.com/favicon.ico" class="s-input" onchange="updatePreview('favicon', this.value)">
-            <input type="file" id="file-favicon" style="display: none;" onchange="uploadAsset('favicon', this)">
-            <button class="btn" title="Upload Favicon" style="background: var(--surface2); color: var(--text); padding: 10px; display: flex; align-items: center; justify-content: center;" onclick="document.getElementById('file-favicon').click()">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            </button>
-          </div>
-          <div id="preview-favicon-box" style="margin-top: 12px; display: none;">
-            <div style="font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 700; text-transform: uppercase;">Preview:</div>
-            <img id="img-preview-favicon" src="" alt="Favicon Preview" style="width: 32px; height: 32px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); padding: 4px; object-fit: contain;">
-          </div>
-        </div>
-      </div>
-      
-      <div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 24px;">
-        <button class="btn" style="background: var(--surface2); color: var(--text);" onclick="window.location.reload()">Cancel</button>
-        <button class="btn accent" onclick="saveAllBranding()">Save Appearance Settings</button>
-      </div>
-    </div>
-
-  </div>
-
-</div>
-</div>
-
 <style>
-.setting-block { margin-bottom: 24px; padding: 24px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; }
-.sb-header { margin-bottom: 20px; }
-.sb-title { font-size: 15px; font-weight: 700; color: var(--text); }
-.sb-desc { font-size: 13px; color: var(--muted); margin-top: 4px; }
+/* Page Specifics */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-6); }
+.theme-card { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; border: 1px solid var(--border-main); position: relative; overflow: hidden; }
+.theme-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.theme-card.active { border-color: var(--accent); background: var(--accent-soft); }
+.theme-card.active::after { content: ''; position: absolute; top: 12px; right: 12px; width: 20px; height: 20px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; border: 2px solid var(--bg-surface); }
 
-.theme-option { 
-    display: flex; flex-direction: column; align-items: center; justify-content: center; 
-    padding: 30px; background: var(--surface); border: 2px solid var(--border); 
-    border-radius: 12px; cursor: pointer; transition: all 0.2s; 
-}
-.theme-option:hover { border-color: var(--accent); transform: scale(1.02); }
-.theme-option.active { border-color: var(--accent); background: var(--accent-bg); }
+.theme-preview { height: 100px; border-radius: var(--radius-md); margin-bottom: var(--s-4); border: 1px solid var(--border-light); }
+.preview-light { background: #f8fafc; position: relative; }
+.preview-light::before { content: ''; position: absolute; left: 12px; top: 12px; width: 40px; height: 8px; background: #e2e8f0; border-radius: 4px; }
+.preview-dark { background: #0f172a; position: relative; }
+.preview-dark::before { content: ''; position: absolute; left: 12px; top: 12px; width: 40px; height: 8px; background: #334155; border-radius: 4px; }
 
-.input-group { display: flex; flex-direction: column; gap: 8px; }
-.input-group label { font-size: 13px; font-weight: 600; color: var(--text); }
-.s-input { 
-    background: var(--surface2); border: 1px solid var(--border); 
-    color: var(--text); padding: 11px 16px; border-radius: 8px; font-size: 14px; width: 100%;
-    outline: none; transition: border-color 0.2s;
-}
-.s-input:focus { border-color: var(--accent); }
+/* Color Scheme Styles */
+.color-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s-4); margin-top: var(--s-4); }
+.preset-card { padding: var(--s-3); background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-md); cursor: pointer; display: flex; align-items: center; gap: var(--s-3); transition: all 0.2s; }
+.preset-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.preset-dots { display: flex; gap: 4px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
 
-.btn { 
-    padding: 10px 20px; border-radius: 8px; font-weight: 700; font-size: 13px; 
-    cursor: pointer; border: none; transition: all 0.2s;
-}
-.btn.accent { background: var(--accent); color: white; }
-.btn.accent:hover { opacity: 0.9; }
+.color-input-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s-6); margin-top: var(--s-8); }
+.color-field { display: flex; flex-direction: column; gap: var(--s-2); }
+.color-picker-wrap { display: flex; gap: var(--s-3); align-items: center; }
+.color-preview-box { width: 40px; height: 40px; border-radius: var(--radius-sm); border: 1px solid var(--border-main); cursor: pointer; position: relative; overflow: hidden; }
+.color-preview-box input[type="color"] { position: absolute; top: -5px; left: -5px; width: 50px; height: 50px; opacity: 0; cursor: pointer; }
 
-/* Switch Toggle */
-.switch { position: relative; display: inline-block; width: 44px; height: 22px; }
-.switch input { opacity: 0; width: 0; height: 0; }
-.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; }
-.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; }
-input:checked + .slider { background-color: var(--accent); }
-input:checked + .slider:before { transform: translateX(22px); }
-.slider.round { border-radius: 34px; }
-.slider.round:before { border-radius: 50%; }
+.branding-logo-box { width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--bg-surface-alt); border: 1px solid var(--border-main); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.branding-logo-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
 </style>
+
+<div class="page-wrap">
+    <!-- Page Header -->
+    <div style="margin-bottom: var(--s-8);">
+        <h1 class="heading" style="font-size: 28px; color: var(--text-primary); display: flex; align-items: center; gap: var(--s-3);">
+            <i data-lucide="palette" style="color: var(--accent);"></i>
+            System Appearance
+        </h1>
+        <p style="color: var(--text-tertiary); font-size: 14px; margin-top: var(--s-1);">Customize the visual identity and interface preferences of the platform.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr; gap: var(--s-8); width: 100%;">
+        <!-- ══ Theme Selection ══ -->
+        <div class="saas-card" style="padding: var(--s-8);">
+            <div style="margin-bottom: var(--s-6);">
+                <h3 class="heading" style="font-size: 18px;">Interface Mode</h3>
+                <p style="color: var(--text-tertiary); font-size: 13px; margin-top: var(--s-1);">Select the primary color scheme for the application workspace.</p>
+            </div>
+
+            <div class="theme-grid">
+                <div id="theme-light" class="saas-card theme-card" onclick="handleThemeSet('light')" style="padding: var(--s-5);">
+                    <div class="theme-preview preview-light"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 700; font-size: 14px;">Lithium Light</span>
+                        <i data-lucide="sun" style="width: 16px; color: #f59e0b;"></i>
+                    </div>
+                </div>
+                <div id="theme-dark" class="saas-card theme-card" onclick="handleThemeSet('dark')" style="padding: var(--s-5);">
+                    <div class="theme-preview preview-dark"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 700; font-size: 14px;">Obsidian Dark</span>
+                        <i data-lucide="moon" style="width: 16px; color: #6366f1;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Color Scheme ══ -->
+        <div class="saas-card" style="padding: var(--s-8);">
+            <div style="margin-bottom: var(--s-6);">
+                <h3 class="heading" style="font-size: 18px;">Color Scheme</h3>
+                <p style="color: var(--text-tertiary); font-size: 13px; margin-top: var(--s-1);">Customize your brand colors to match your identity.</p>
+            </div>
+
+            <div>
+                <label class="att-label" style="margin-bottom: var(--s-4); display: block;">Quick Presets</label>
+                <div class="color-presets">
+                    <div class="preset-card" onclick="applyPreset('#2563eb', '#f8fafc')">
+                        <div class="preset-dots">
+                            <div class="dot" style="background: #2563eb;"></div>
+                            <div class="dot" style="background: #3b82f6;"></div>
+                            <div class="dot" style="background: #2563eb;"></div>
+                        </div>
+                        <span style="font-size: 13px; font-weight: 600;">Default Blue</span>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('#059669', '#ecfdf5')">
+                        <div class="preset-dots">
+                            <div class="dot" style="background: #059669;"></div>
+                            <div class="dot" style="background: #10b981;"></div>
+                            <div class="dot" style="background: #059669;"></div>
+                        </div>
+                        <span style="font-size: 13px; font-weight: 600;">Emerald</span>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('#7c3aed', '#f5f3ff')">
+                        <div class="preset-dots">
+                            <div class="dot" style="background: #7c3aed;"></div>
+                            <div class="dot" style="background: #a78bfa;"></div>
+                            <div class="dot" style="background: #7c3aed;"></div>
+                        </div>
+                        <span style="font-size: 13px; font-weight: 600;">Purple</span>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('#e11d48', '#fff1f2')">
+                        <div class="preset-dots">
+                            <div class="dot" style="background: #e11d48;"></div>
+                            <div class="dot" style="background: #fb7185;"></div>
+                            <div class="dot" style="background: #e11d48;"></div>
+                        </div>
+                        <span style="font-size: 13px; font-weight: 600;">Rose</span>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('#ea580c', '#fff7ed')">
+                        <div class="preset-dots">
+                            <div class="dot" style="background: #ea580c;"></div>
+                            <div class="dot" style="background: #fb923c;"></div>
+                            <div class="dot" style="background: #ea580c;"></div>
+                        </div>
+                        <span style="font-size: 13px; font-weight: 600;">Orange</span>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('#4f46e5', '#eef2ff')">
+                        <div class="preset-dots">
+                            <div class="dot" style="background: #4f46e5;"></div>
+                            <div class="dot" style="background: #818cf8;"></div>
+                            <div class="dot" style="background: #4f46e5;"></div>
+                        </div>
+                        <span style="font-size: 13px; font-weight: 600;">Indigo</span>
+                    </div>
+                </div>
+
+                <div class="color-input-group">
+                    <div class="color-field">
+                        <label class="att-label">Primary Color</label>
+                        <div class="color-picker-wrap">
+                            <div class="color-preview-box" id="preview-primary" style="background: #2563eb;">
+                                <input type="color" id="set-primary-color" value="#2563eb" oninput="updateColorPreview('primary', this.value)">
+                            </div>
+                            <input type="text" id="text-primary-color" class="saas-input" value="#2563eb" style="width: 100px; padding: 8px 12px; font-size: 13px;" oninput="updateColorPreview('primary', this.value, true)">
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-tertiary);">Main brand color used throughout the app.</p>
+                    </div>
+
+                    <div class="color-field">
+                        <label class="att-label">Accent Color</label>
+                        <div class="color-picker-wrap">
+                            <div class="color-preview-box" id="preview-accent" style="background: #f8fafc;">
+                                <input type="color" id="set-accent-color" value="#f8fafc" oninput="updateColorPreview('accent', this.value)">
+                            </div>
+                            <input type="text" id="text-accent-color" class="saas-input" value="#f8fafc" style="width: 100px; padding: 8px 12px; font-size: 13px;" oninput="updateColorPreview('accent', this.value, true)">
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-tertiary);">Secondary color for highlights and accents.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ Navigation & Layout ══ -->
+        <div class="saas-card" style="padding: var(--s-8);">
+            <div style="margin-bottom: var(--s-6);">
+                <h3 class="heading" style="font-size: 18px;">Navigation & Layout</h3>
+                <p style="color: var(--text-tertiary); font-size: 13px; margin-top: var(--s-1);">Configure structural elements for peak productivity.</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--s-4);">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--s-4); background: var(--bg-surface-alt); border: 1px solid var(--border-light); border-radius: var(--radius-lg);">
+                    <div style="display: flex; gap: var(--s-4); align-items: center;">
+                        <div style="width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="map" style="width: 16px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; font-size: 14px;">Navigation Path</div>
+                            <div style="font-size: 12px; color: var(--text-tertiary);">Show breadcrumbs trail at the top of the interface.</div>
+                        </div>
+                    </div>
+                    <label class="saas-toggle">
+                        <input type="checkbox" id="check-breadcrumbs" onchange="saveAppSetting('show_breadcrumbs', this.checked ? 'true' : 'false')">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--s-4); background: var(--bg-surface-alt); border: 1px solid var(--border-light); border-radius: var(--radius-lg);">
+                    <div style="display: flex; gap: var(--s-4); align-items: center;">
+                        <div style="width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="panel-left" style="width: 16px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; font-size: 14px;">Sidebar Optimization</div>
+                            <div style="font-size: 12px; color: var(--text-tertiary);">Allow the sidebar to be collapsed to maximize screen real estate.</div>
+                        </div>
+                    </div>
+                    <label class="saas-toggle">
+                        <input type="checkbox" id="check-sidebar" onchange="saveAppSetting('sidebar_toggle', this.checked ? 'true' : 'false'); window.sidebarToggleEnabled = this.checked;">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ White Label Branding ══ -->
+        <div class="saas-card" style="padding: var(--s-8);">
+            <div style="margin-bottom: var(--s-8);">
+                <h3 class="heading" style="font-size: 18px;">White Label Branding</h3>
+                <p style="color: var(--text-tertiary); font-size: 13px; margin-top: var(--s-1);">Align the system workspace with your corporate visual identity.</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--s-8);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-8);">
+                    <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                        <label class="att-label">Organization Name</label>
+                        <input type="text" id="set-company-name" class="saas-input" placeholder="e.g. AeroDynamics Corp">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-8);">
+                    <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                        <label class="att-label">Primary Brand Mark (Logo)</label>
+                        <div style="display: flex; gap: var(--s-4); align-items: center;">
+                            <div class="branding-logo-box" id="preview-logo-box">
+                                <img id="img-preview-logo" src="" alt="">
+                                <i data-lucide="image" id="logo-placeholder" style="width: 20px; opacity: 0.2;"></i>
+                            </div>
+                            <div style="flex: 1; position: relative;">
+                                <input type="text" id="set-logo-url" class="saas-input" style="padding-right: 48px;" placeholder="https://..." onchange="updatePreview('logo', this.value)">
+                                <button class="icon-btn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%);" onclick="document.getElementById('file-logo').click()">
+                                    <i data-lucide="upload-cloud" style="width: 18px;"></i>
+                                </button>
+                                <input type="file" id="file-logo" style="display: none;" accept="image/*" onchange="uploadAsset('logo', this)">
+                            </div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">Recommended: SVG or PNG with transparent background (max 2MB).</p>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                        <label class="att-label">Platform Favicon</label>
+                        <div style="display: flex; gap: var(--s-4); align-items: center;">
+                            <div class="branding-logo-box" id="preview-favicon-box" style="width: 48px; height: 48px;">
+                                <img id="img-preview-favicon" src="" alt="" style="width: 24px; height: 24px;">
+                                <i data-lucide="sun" id="favicon-placeholder" style="width: 18px; opacity: 0.2;"></i>
+                            </div>
+                            <div style="flex: 1; position: relative;">
+                                <input type="text" id="set-favicon-url" class="saas-input" style="padding-right: 48px;" placeholder="https://..." onchange="updatePreview('favicon', this.value)">
+                                <button class="icon-btn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%);" onclick="document.getElementById('file-favicon').click()">
+                                    <i data-lucide="upload-cloud" style="width: 18px;"></i>
+                                </button>
+                                <input type="file" id="file-favicon" style="display: none;" accept="image/*" onchange="uploadAsset('favicon', this)">
+                            </div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">Ideal size: 32x32px or 64x64px ICO/PNG.</p>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: var(--s-4); padding-top: var(--s-8); border-top: 1px solid var(--border-light);">
+                    <button class="saas-btn btn-secondary" onclick="window.location.reload()">Reset Defaults</button>
+                    <button class="saas-btn btn-primary" onclick="saveAllBranding()">
+                        <i data-lucide="save" style="width: 18px;"></i> Commit Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 async function loadAppSettings() {
@@ -178,54 +276,62 @@ async function loadAppSettings() {
     updatePreview('favicon', data.favicon_url);
     
     document.getElementById('check-breadcrumbs').checked = (data.show_breadcrumbs === 'true');
-    
-    // Load backend setting for sidebar toggle enabled state
     document.getElementById('check-sidebar').checked = (data.sidebar_toggle === 'true');
     
+    // Update Colors
+    if (data.primary_color) updateColorPreview('primary', data.primary_color, true);
+    if (data.accent_color) updateColorPreview('accent', data.accent_color, true);
+
     updateThemeUI(data.theme_mode || 'light');
-  } catch (e) {
-    console.error("Failed to load settings:", e);
-  }
+    if(window.lucide) lucide.createIcons();
+  } catch (e) { console.error("Failed to load settings:", e); }
+}
+
+function updateColorPreview(type, val, updateInput = false) {
+    document.getElementById(`preview-${type}`).style.background = val;
+    document.getElementById(`text-${type}-color`).value = val;
+    if (updateInput) {
+        document.getElementById(`set-${type}-color`).value = val;
+    }
+}
+
+function applyPreset(primary, accent) {
+    updateColorPreview('primary', primary, true);
+    updateColorPreview('accent', accent, true);
 }
 
 function updateThemeUI(theme) {
-  document.querySelectorAll('.theme-option').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.theme-card').forEach(el => el.classList.remove('active'));
   const activeOption = document.getElementById('theme-' + theme);
   if (activeOption) activeOption.classList.add('active');
 }
 
 async function handleThemeSet(theme) {
   updateThemeUI(theme);
-  setTheme(theme); // Global theme swap
+  if(window.setTheme) setTheme(theme); 
   await saveAppSetting('theme_mode', theme);
 }
 
 function updatePreview(type, url) {
-  const box = document.getElementById(`preview-${type}-box`);
   const img = document.getElementById(`img-preview-${type}`);
+  const icon = document.getElementById(`${type}-placeholder`);
   if (url && url.length > 5) {
     img.src = url;
-    box.style.display = 'block';
+    img.style.display = 'block';
+    if(icon) icon.style.display = 'none';
   } else {
-    box.style.display = 'none';
+    img.style.display = 'none';
+    if(icon) icon.style.display = 'block';
   }
 }
 
 async function saveAppSetting(key, value) {
   try {
-    const res = await fetch('/api/system_settings', {
+    await fetch('/api/system_settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [key]: value })
     });
-    const result = await res.json();
-    if (result.success) {
-      console.log(`Saved ${key}=${value}`);
-      // If branding settings were changed, we might want to refresh the page to see changes in sidebar
-      if (['company_name', 'logo_url', 'favicon_url', 'show_breadcrumbs'].includes(key)) {
-        // window.location.reload(); 
-      }
-    }
   } catch (e) { console.error(e); }
 }
 
@@ -233,7 +339,9 @@ async function saveAllBranding() {
     const payload = {
         company_name: document.getElementById('set-company-name').value,
         logo_url: document.getElementById('set-logo-url').value,
-        favicon_url: document.getElementById('set-favicon-url').value
+        favicon_url: document.getElementById('set-favicon-url').value,
+        primary_color: document.getElementById('text-primary-color').value,
+        accent_color: document.getElementById('text-accent-color').value
     };
     try {
         const res = await fetch('/api/system_settings', {
@@ -245,22 +353,7 @@ async function saveAllBranding() {
         if (result.success) {
             window.location.reload();
         }
-    } catch (e) { showToast('❌ Error saving settings', true); }
-}
-
-function showToast(msg, isError = false) {
-    let toast = document.getElementById('app-toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'app-toast';
-        toast.style.cssText = 'position:fixed;bottom:28px;right:28px;padding:14px 22px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;transition:opacity 0.4s;opacity:0;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
-        document.body.appendChild(toast);
-    }
-    toast.style.background = isError ? 'var(--red, #e74c3c)' : 'var(--accent, #3b82f6)';
-    toast.style.color = '#fff';
-    toast.textContent = msg;
-    toast.style.opacity = '1';
-    setTimeout(() => { toast.style.opacity = '0'; }, 2500);
+    } catch (e) { alert('Error saving settings'); }
 }
 
 async function uploadAsset(type, input) {
@@ -272,26 +365,14 @@ async function uploadAsset(type, input) {
   formData.append('type', type);
 
   try {
-    const res = await fetch('/api/upload_branding', {
-      method: 'POST',
-      body: formData
-    });
+    const res = await fetch('/api/upload_branding', { method: 'POST', body: formData });
     const data = await res.json();
     if (data.success) {
-      if (type === 'logo') {
-        document.getElementById('set-logo-url').value = data.url;
-      } else {
-        document.getElementById('set-favicon-url').value = data.url;
-      }
+      if (type === 'logo') { document.getElementById('set-logo-url').value = data.url; } 
+      else { document.getElementById('set-favicon-url').value = data.url; }
       updatePreview(type, data.url);
-      alert(`${type.charAt(0).toUpperCase() + type.slice(1)} uploaded successfully! Press Save Appearance Settings to apply.`);
-    } else {
-      alert("Upload failed: " + data.error);
-    }
-  } catch (e) {
-    console.error(e);
-    alert("Upload error.");
-  }
+    } else { alert("Upload failed: " + data.error); }
+  } catch (e) { alert("Upload error."); }
 }
 
 document.addEventListener('DOMContentLoaded', loadAppSettings);
