@@ -1198,6 +1198,7 @@ def api_attendance_records():
             SELECT
                 COUNT(*)::int AS total_records,
                 COUNT(DISTINCT a.staff_id)::int AS total_present,
+                (SELECT COUNT(*)::int FROM staff_profiles) AS total_system_staff,
                 SUM(CASE WHEN a.attendance_date = CURRENT_DATE THEN 1 ELSE 0 END)::int AS today_total
             FROM attendance a
             LEFT JOIN staff_profiles s ON s.id = a.staff_id
@@ -1237,7 +1238,8 @@ def api_attendance_records():
                 "records": formatted_records,
                 "summary": {
                     "total_records": summary.get("total_records", 0) or 0,
-                    "total_staff": summary.get("total_present", 0) or 0,
+                    "total_present": summary.get("total_present", 0) or 0,
+                    "total_staff": summary.get("total_system_staff", 0) or 0,
                     "today_total": summary.get("today_total", 0) or 0,
                 },
                 "pagination": {

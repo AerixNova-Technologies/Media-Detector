@@ -377,7 +377,7 @@ def export_general_movement_logs():
     return _export_logs_from_table(table_name='movement_log', filename_prefix='general_movement')
 
 def _export_logs_from_table(table_name: str, filename_prefix: str):
-    """Helper to export logs from a specific table as CSV."""
+    """Helper to export logs from a specific table as Excel."""
     person_type = request.args.get("type")
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
@@ -417,26 +417,44 @@ def _export_logs_from_table(table_name: str, filename_prefix: str):
         """, tuple(params))
         
         rows = cur.fetchall()
-        
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['Detection Time', 'Person Type', 'Staff ID', 'Staff Name', 'Camera', 'Confidence Score'])
-        
-        for r in rows:
-            writer.writerow([
-                r['detected_at'].strftime('%Y-%m-%d %H:%M:%S') if r['detected_at'] else '',
-                r['person_type'].capitalize() if r['person_type'] else 'Unknown',
-                r['display_id'] or '',
-                r['staff_name'] or '',
-                r['camera_id'] or '',
-                f"{r['confidence_score']:.2f}" if r['confidence_score'] else '0.00'
-            ])
-            
+
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Logs"
+
+        headers = ['Detection Time', 'Person Type', 'Staff ID', 'Staff Name', 'Camera', 'Confidence Score']
+        header_fill = PatternFill(start_color="2D2D3F", end_color="2D2D3F", fill_type="solid")
+        header_font = Font(name='Calibri', bold=True, color="A78BFA")
+
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+
+        for row_idx, r in enumerate(rows, start=2):
+            ws.cell(row=row_idx, column=1, value=r['detected_at'].strftime('%Y-%m-%d %H:%M:%S') if r['detected_at'] else '')
+            ws.cell(row=row_idx, column=2, value=r['person_type'].capitalize() if r['person_type'] else 'Unknown')
+            ws.cell(row=row_idx, column=3, value=r['display_id'] or '')
+            ws.cell(row=row_idx, column=4, value=r['staff_name'] or '')
+            ws.cell(row=row_idx, column=5, value=r['camera_id'] or '')
+            ws.cell(row=row_idx, column=6, value=round(float(r['confidence_score']), 2) if r['confidence_score'] else 0.00)
+
+        # Auto-fit columns
+        for col in ws.columns:
+            max_len = max((len(str(cell.value or '')) for cell in col), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+
+        output = io.BytesIO()
+        wb.save(output)
         output.seek(0)
+
         return Response(
             output.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-disposition": f"attachment; filename={filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-disposition": f"attachment; filename={filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"}
         )
     except Exception as e:
         log.error(f"Error exporting {table_name}: {e}")
