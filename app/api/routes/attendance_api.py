@@ -286,9 +286,9 @@ def _fetch_logs_from_table(table_name: str):
         total = cur.fetchone()['count']
         
         # Get specific counts for summary
-        cur.execute(f"SELECT COUNT(*) FROM {table_name} WHERE person_type ILIKE 'staff' AND (detected_at::date = CURRENT_DATE OR %s = 'all')", (period,))
+        cur.execute(f"SELECT COUNT(*) as count FROM {table_name} WHERE person_type ILIKE 'staff' AND (detected_at::date = CURRENT_DATE OR %s = 'all')", (period,))
         staff_count = cur.fetchone()['count']
-        cur.execute(f"SELECT COUNT(*) FROM {table_name} WHERE person_type ILIKE 'unknown' AND (detected_at::date = CURRENT_DATE OR %s = 'all')", (period,))
+        cur.execute(f"SELECT COUNT(*) as count FROM {table_name} WHERE person_type ILIKE 'unknown' AND (detected_at::date = CURRENT_DATE OR %s = 'all')", (period,))
         unknown_count = cur.fetchone()['count']
         
         # Get data

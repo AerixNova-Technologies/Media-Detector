@@ -282,9 +282,9 @@ async function loadMemberLogs() {
             lucide.createIcons();
         }
 
-        document.getElementById('count-total').textContent = pagination.total;
-        document.getElementById('count-staff').textContent = pagination.staff_count || 0;
-        document.getElementById('count-unknown').textContent = pagination.unknown_count || 0;
+        document.getElementById('count-total').textContent = result.counts.total;
+        document.getElementById('count-staff').textContent = result.counts.staff || 0;
+        document.getElementById('count-unknown').textContent = result.counts.unknown || 0;
         renderPagination(pagination);
 
     } catch (e) {
