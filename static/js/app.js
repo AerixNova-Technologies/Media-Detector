@@ -121,7 +121,7 @@ function renderCameraGrid(cams) {
                         </svg>
                     </div>
 
-                    <img src="${streamUrl}" style="width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 2;" onerror="this.src='/static/img/cam-placeholder.png'; this.style.opacity=0.3;">
+                    <img src="${streamUrl}" style="width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 2;" onerror="this.src='/static/img/hero.png'; this.style.opacity=0.3;">
                     
                     <div style="position: absolute; top: 12px; left: 12px; background: rgba(239, 68, 68, 0.8); z-index: 10; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; color: white; display: flex; align-items: center; gap: 4px;">
                         <span style="width: 4px; height: 4px; background: white; border-radius: 50%; animation: pulse 2s infinite;"></span>

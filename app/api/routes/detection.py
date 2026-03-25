@@ -490,8 +490,15 @@ def api_upload_staff():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        
         if is_update and original_name:
-            # FORCE update based on the EXACT original name stored in DB
+            # Check for name collision if renaming
+            if staff_name != original_name and staff_name != sanitized_original:
+                cur.execute("SELECT id FROM staff_profiles WHERE name = %s AND name != %s", (staff_name, original_name))
+                if cur.fetchone():
+                    return jsonify({"success": False, "error": f"Cannot rename; identity '{staff_name}' already exists."}), 400
+
+            # FORCE update based on...
             cur.execute("""
                 UPDATE staff_profiles 
                 SET name = %s, email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s, status = %s 
@@ -505,7 +512,7 @@ def api_upload_staff():
                     UPDATE staff_profiles 
                     SET name = %s, email = %s, phone = %s, staff_id = %s, address = %s, communication = %s, folder_path = %s, status = %s 
                     WHERE name = %s
-                """, (staff_name, email, phone, address, communication, staff_dir, sanitized_original))
+                """, (staff_name, email, phone, staff_id_val, address, communication, staff_dir, status_val, sanitized_original))
         else:
             # Pure CREATE or UPSERT by new name
             cur.execute("SELECT id FROM staff_profiles WHERE name = %s", (staff_name,))
@@ -683,13 +690,13 @@ def api_staff_profile(staff_name: str):
         requested_id = request.args.get("id", type=int)
         if requested_id is not None:
             cur.execute(
-                "SELECT name, email, phone, address, communication FROM staff_profiles WHERE id = %s",
+                "SELECT name, staff_id, email, phone, address, communication FROM staff_profiles WHERE id = %s",
                 (requested_id,),
             )
             row = cur.fetchone()
             if not row:
                 cur.execute(
-                    "SELECT name, email, phone, address, communication FROM staff_profiles WHERE name = %s",
+                    "SELECT name, staff_id, email, phone, address, communication FROM staff_profiles WHERE name = %s",
                     (staff_name,),
                 )
                 row = cur.fetchone()
@@ -764,7 +771,7 @@ def api_update_staff_field(staff_name: str):
     field = data.get("field")
     value = data.get("value")
     
-    if field not in ["name", "phone", "email"]:
+    if field not in ["name", "phone", "email", "status", "address"]:
         return jsonify({"success": False, "error": "Invalid field specification"}), 400
     
     try:
@@ -802,6 +809,7 @@ def api_update_staff_field(staff_name: str):
     finally:
         if conn:
             conn.close()
+@api_bp.route("/api/staff_profiles/<staff_name>/photos/<filename>", methods=["DELETE"])
 @login_required
 def api_delete_staff_photo(staff_name: str, filename: str):
     """Delete a single reference photo from a staff member's profile."""
