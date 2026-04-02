@@ -78,7 +78,7 @@ class AIPipeline(threading.Thread):
     def __init__(
         self,
         in_queue:      "queue.Queue[np.ndarray | None]",
-        result_store:  list,
+        result_store:  dict[str, AIResult],
         result_lock:   threading.Lock,
         upload_folder: str = "",
     ):
@@ -129,6 +129,7 @@ class AIPipeline(threading.Thread):
 
         self.camera_name = "Camera"  # Safe default to avoid AttributeError
         self.camera_roles = []       # Active roles for current camera (entry, exit, general)
+        self.camera_gate = None      # Active gate for current camera
 
         # Multi-worker executors to handle many people in parallel
         self._emotion_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="emotion")
@@ -228,14 +229,19 @@ class AIPipeline(threading.Thread):
                 item = self.in_queue.get(timeout=0.1)
                 
                 if isinstance(item, tuple):
-                    # Format: (ai_f, name, roles, (original_w, original_h))
-                    ai_frame, cam_name, cam_roles, dims = item
+                    # Format: (ai_f, name, roles, (original_w, original_h), gate_id)
+                    if len(item) == 5:
+                        ai_frame, cam_name, cam_roles, dims, cam_gate = item
+                    else:
+                        ai_frame, cam_name, cam_roles, dims = item
+                        cam_gate = self.camera_gate # Fallback
                     full_w, full_h = dims
                 else:
                     # Legacy support
                     ai_frame = item
                     cam_name = self.camera_name # Fallback
                     cam_roles = self.camera_roles # Fallback
+                    cam_gate = self.camera_gate
                     full_w, full_h = self._full_w, self._full_h
                 
                 state = self._get_state(cam_name)
@@ -243,9 +249,14 @@ class AIPipeline(threading.Thread):
                 continue
             if ai_frame is None:
                 break
-            result = self._process(ai_frame, full_w, full_h, state, cam_name, cam_roles)
+            
+            # AI Heartbeat Monitor (Log every 50 frames to confirm YOLO thread is alive)
+            if state['frame_idx'] % 50 == 0:
+                log.info("AI: Pipeline Heartbeat (Processing frame %d for %s)", state['frame_idx'], cam_name)
+
+            result = self._process(ai_frame, full_w, full_h, state, cam_name, cam_roles, cam_gate)
             with self.result_lock:
-                self.result_store[0] = result
+                self.result_store[cam_name] = result
         self._emotion_executor.shutdown(wait=False)
         self._rec_executor.shutdown(wait=False)
         log.info("AI pipeline stopped.")
@@ -292,21 +303,24 @@ class AIPipeline(threading.Thread):
                 if not face_bbox:
                     face_bbox = self.face_det.detect_in_crop(ai_frame, bbox, threshold=0.3)
                 if face_bbox:
-                    log.info(f"DEBUG: AI: Face detected for Track {tid} at {face_bbox}")
                     fx1, fy1, fx2, fy2 = (int(v) for v in face_bbox)
+                    # Extract the crop safely
                     face_crop = ai_frame[max(0,fy1):min(ai_frame.shape[0],fy2), max(0,fx1):min(ai_frame.shape[1],fx2)]
+                    
                     if face_crop.size > 0:
-                        # PROACTIVE: Allow first attempt even if quality is just "okay"
-                        # We use 5.0 as a floor for complete garbage images
-                        if not self.face_det.is_high_quality(face_crop, min_sharpness=5.0):
-                            log.debug(f"AI: Recognition skipped for Track {tid} - Image too poor")
+                        state = self._get_state(cam_name)
+                        td = state['track_data'].get(tid, {})
+
+                        # PROACTIVE: Allow first attempt only if quality is "GOOD"
+                        # Increase sharpness floor to 20.0 to avoid complete junk shots
+                        if not self.face_det.is_high_quality(face_crop, min_sharpness=20.0):
+                            log.debug(f"AI: Recognition skipped for Track {tid} - Image quality too poor ({td.get('best_clarity',0):.1f}/20.0)")
                             return "Unknown"
 
                         res = self.face_rec.recognize(face_crop, tid)
                         
                         # UPDATE: Identity Voting Mechanism
                         if res and res.get("name") != "Unknown":
-                            state = self._get_state(cam_name)
                             if tid in state['track_data']:
                                 td = state['track_data'][tid]
                                 votes = td.get("id_votes", {})
@@ -314,19 +328,19 @@ class AIPipeline(threading.Thread):
                                 votes[name] = votes.get(name, 0) + 1
                                 td["id_votes"] = votes
                                 
-                                # IDENTITY OVERRIDE: If a name gets 3+ votes (to ensure stability), update it
-                                if votes[name] >= 3:
+                                # IDENTITY OVERRIDE: 
+                                # Require at least 5 votes for initial identity to avoid misidentification (High Stability Mode)
+                                if votes[name] >= 5:
                                     old_id = td.get("identity", "Unknown")
                                     td["identity"] = name
                                     td["staff_db_id"] = res.get("id")
-                                    td["display_id"] = f"{name} (#{tid})"
+                                    td["display_id"] = f"{res.get('display_id', name)} (#{tid})"
                                     td["recognized"] = True
 
                                     # UPDATE DATABASE (LATE SYNC)
                                     if (old_id != name):
                                         from app.services.attendance_service import update_person_identity
                                         log.info(f"AI: [AUTO-CORRECT] {old_id} -> {name} for Track {tid} (Camera: {cam_name})")
-                                        # Use both member_id and track_id+cam_name for robustness against race conditions
                                         update_person_identity(
                                             member_id=td.get("db_id"), 
                                             staff_id=td["staff_db_id"], 
@@ -334,8 +348,6 @@ class AIPipeline(threading.Thread):
                                             track_id=tid,
                                             movement_id=td.get("movement_id")
                                         )
-                                        
-                                        # PARALLEL TELEGRAM: Notify upon successful identity match
                                         self.notifier.notify_person(tid, cam_name, identity=name, action=td.get("action", ""), image_path=td.get("entry_image_path"))
                         
                         return res.get("name", "Unknown")
@@ -347,7 +359,11 @@ class AIPipeline(threading.Thread):
 
     # ── Main processing cycle ─────────────────────────────────────────────────
 
-    def _process(self, ai_frame: np.ndarray, full_w: int, full_h: int, state: dict, cam_name: str, cam_roles: list) -> AIResult:
+    def _process(self, ai_frame: np.ndarray, full_w: int, full_h: int, state: dict, cam_name: str, cam_roles: list, cam_gate: str | None = None) -> AIResult:
+        # PAUSE CHECK: If camera has 'paused' role, skip all AI logic and logging
+        if cam_roles and any(r.lower() == "paused" for r in cam_roles):
+            return AIResult(motion=False, tracks=[], entries=state.get('entries',0), exits=state.get('exits',0))
+
         global _total_motion_events
         motion = False
         mask = None
@@ -378,7 +394,8 @@ class AIPipeline(threading.Thread):
             now = time.monotonic()
             
             # 0. Periodic Face Reload (Every 2 minutes) - Async so it doesn't stop YOLO
-            if now - self._last_face_reload > 120:
+            # 0. Periodic Face Reload (Every 30 minutes) - Async so it doesn't stop YOLO
+            if now - self._last_face_reload > 1800:
                 log.info("AI: Triggering background reload of staff faces...")
                 self._rec_executor.submit(self.face_rec.load_from_folder, self.face_rec.db_path)
                 self._last_face_reload = now
@@ -451,8 +468,7 @@ class AIPipeline(threading.Thread):
 
             # 3) Tracker Update (ByteTrack)
             raw_tracks = state['tracker'].update(state['last_detections'])
-            
-            # --- SPATIAL DEDUPLICATION (Fix for multiple boxes on one person) ---
+                # --- SPATIAL DEDUPLICATION (Fix for multiple boxes on one person) ---
             # Sort by track_id (older tracks first) to prioritize stability
             raw_tracks = sorted(raw_tracks, key=lambda t: t.track_id)
             filtered_tracks = []
@@ -484,7 +500,9 @@ class AIPipeline(threading.Thread):
                         "db_id": None,          
                         "missing_count": 0,     # GRACE PERIOD
                         "is_accounted": False,  # Has it been counted in self.entries?
+                        "start_y": bbox[1],      # Track starting Y for direction detection
                         "obj_type": "human" if track.cls_id == person_det.PERSON_CLASS_ID else "animal",
+                        "obj_votes": {"human": 0, "animal": 0},
                         "start_time": now,
                         "best_clarity": -1.0,
                         "best_frame": None,
@@ -497,22 +515,35 @@ class AIPipeline(threading.Thread):
                 td = state['track_data'][tid]
                 td["missing_count"] = 0 # Reset grace period
 
-                # RE-EVALUATE CLASSIFICATION (Improve robustness against initial frame flicker)
-                # If we see it's an animal in ANY of the first 15 frames, mark as animal
-                if td.get("track_frame_count", 0) < 15 and track.cls_id != person_det.PERSON_CLASS_ID:
-                    if td.get("obj_type") == "human":
-                        log.info(f"AI: Re-classifying Track {tid} from human to animal (Confidence Update)")
-                        td["obj_type"] = "animal"
+                # RE-EVALUATE CLASSIFICATION (Majority Voting)
+                cls_key = "human" if track.cls_id == person_det.PERSON_CLASS_ID else "animal"
+                td["obj_votes"][cls_key] += 1
                 
-                # Increment entries ONLY once per unique STABLE track lifecycle
+                # Only switch to 'animal' if we have 5+ more animal votes than human votes
+                if td["obj_votes"]["animal"] > (td["obj_votes"]["human"] + 5):
+                     if td["obj_type"] == "human":
+                         log.info(f"AI: Re-classifying Track {tid} to animal (Voting: {td['obj_votes']})")
+                         td["obj_type"] = "animal"
+                # Conversely, switch back to 'human' if human votes pick up
+                elif td["obj_votes"]["human"] > td["obj_votes"]["animal"]:
+                     td["obj_type"] = "human"
+                
+                # Direction-Based Increment (IN/OUT)
                 if tid > 0 and not td.get("is_accounted"):
-                    if td["obj_type"] == "human":
+                    curr_y = bbox[1]
+                    start_y = td.get("start_y", curr_y)
+                    
+                    # Require at least 40 pixels of movement to confirm direction
+                    if curr_y > (start_y + 40):
                         state['entries'] += 1 
+                        td["direction"] = "IN"                                  
                         td["is_accounted"] = True
-                        log.info(f"COUNT: Person entering (ID: {tid}). Total: {state['entries']}")
-                    else:
-                        td["is_accounted"] = True # Mark animals as accounted but don't increment human entries
-                        log.info(f"AI: Animal entering (ID: {tid})")
+                        log.info(f"COUNT: Person IN (ID: {tid}). Total IN: {state['entries']}")
+                    elif curr_y < (start_y - 40):
+                        state['exits'] += 1
+                        td["direction"] = "OUT"
+                        td["is_accounted"] = True
+                        log.info(f"COUNT: Person OUT (ID: {tid}). Total OUT: {state['exits']}")
                 
                 current_id = td.get("identity", "Unknown")
                 
@@ -548,10 +579,12 @@ class AIPipeline(threading.Thread):
                                 track_id=tid,
                                 movement_id=td.get("movement_id"),
                                 image_path=f"static/uploads/movement/{sync_crop_filename}" if td.get("best_frame") is not None else None,
-                                confidence=td["best_clarity"]
+                                confidence=td["best_clarity"],
+                                category=rec.get("category")
                             )
                             td["last_synced_id"] = new_id
                             td["last_synced_clarity"] = td["best_clarity"]
+                            td["category"] = rec.get("category")
 
                             # PARALLEL TELEGRAM: Notify when officially recognized
                             self._rec_executor.submit(self.notifier.notify_person, tid, cam_name, identity=new_id, action=td.get("action", ""), image_path=td.get("entry_image_path"))
@@ -561,31 +594,37 @@ class AIPipeline(threading.Thread):
                 # A. Frame Collection (collect up to 50 for better selection and 30-frame log delay)
                 td["track_frame_count"] = td.get("track_frame_count", 0) + 1
                 
-                # NEW: High-frequency movement logging (Every 5 frames)
-                if td["track_frame_count"] % 5 == 0:
-                    mv_ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]
-                    mv_filename = f"move_{tid}_{mv_ts}.jpg"
-                    mv_path = os.path.join("static", "uploads", "movement", mv_filename)
-                    cv2.imwrite(mv_path, ai_frame)
+                # OPTIMIZED MOVEMENT LOGGING (Every 60 frames + Smart Movement Filter)
+                # This ensures we don't choke the CPU with disk I/O while YOLO stays active for every frame.
+                if td["track_frame_count"] % 60 == 0:
+                    curr_center_y = bbox[1] + (bbox[3] / 2)
+                    last_log_y = td.get("last_log_y", -999)
                     
-                    # Log movement (using global imports)
-                    identity_name = td.get("identity", "Unknown")
-                    s_id = td.get("staff_db_id")
-                    p_type = td["obj_type"] if identity_name == "Unknown" else "staff"
-                    
-                    mv_id = log_movement(
-                        camera_id=cam_name,
-                        image_path=f"static/uploads/movement/{mv_filename}",
-                        track_id=tid,
-                        event_type='MOVE_TRACK',
-                        staff_id=s_id,
-                        staff_name=identity_name if identity_name != "Unknown" else None,
-                        person_type=p_type
-                    )
-                    if mv_id:
-                        td["movement_id"] = mv_id
-                        # Use the track's object type for classification
-                        update_movement_classification(mv_id, td["obj_type"], 1.0)
+                    # Store center_y for 'Smart Logging' (Only log if moved > 30px)
+                    if abs(curr_center_y - last_log_y) > 30:
+                        mv_ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]
+                        mv_filename = f"move_{tid}_{mv_ts}.jpg"
+                        mv_path = os.path.join("static", "uploads", "movement", mv_filename)
+                        cv2.imwrite(mv_path, ai_frame)
+                        
+                        # Log movement (using global imports)
+                        identity_name = td.get("identity", "Unknown")
+                        s_id = td.get("staff_db_id")
+                        p_type = td["obj_type"] if identity_name == "Unknown" else "staff"
+                        
+                        mv_id = log_movement(
+                            camera_id=cam_name,
+                            image_path=f"static/uploads/movement/{mv_filename}",
+                            track_id=tid,
+                            event_type='MOVE_TRACK',
+                            staff_id=s_id,
+                            staff_name=identity_name if identity_name != "Unknown" else None,
+                            person_type=p_type
+                        )
+                        if mv_id:
+                            td["movement_id"] = mv_id
+                            td["last_log_y"] = curr_center_y # Update last logged position
+                            update_movement_classification(mv_id, td["obj_type"], 1.0)
 
                 if len(td["frames"]) < 50:
                     clarity = self._calculate_clarity(ai_frame, bbox)
@@ -671,15 +710,17 @@ class AIPipeline(threading.Thread):
 
                         from app.services.attendance_service import log_person, get_recent_sighting
                         
-                        # DEDUPLICATION: Avoid row spam for the same staff member
+                        # DEDUPLICATION: Avoid row spam for both staff and anonymous tracks
                         s_id = td.get("staff_db_id")
                         existing_visit_id = None
-                        if s_id:
-                            existing_visit_id = get_recent_sighting(s_id, cam_name)
+                        
+                        is_unk = (person_type == "unknown")
+                        existing_visit_id = get_recent_sighting(s_id, cam_name, is_unknown=is_unk)
                         
                         if existing_visit_id:
                             log.info(f"AI: [DEDUPLICATED] Track {tid} ({current_id}) linked to recent visit {existing_visit_id}")
                             td["db_id"] = existing_visit_id
+                            td["logged"] = True # Set flag even if duplicated to stop checking!
                         else:
                             # ROLE-BASED LOGGING:
                             role_list = [r.lower() for r in cam_roles]
@@ -695,14 +736,14 @@ class AIPipeline(threading.Thread):
                                 staff_id=s_id,
                                 image_path=f"static/uploads/movement/{full_filename}", 
                                 # Normalize confidence for DB/UI (Score out of 100)
-                                # 150 is a high baseline for very sharp frames
                                 confidence=min(1.0, td["best_clarity"] / 150.0),
                                 staff_name=current_id if person_type == "staff" else None,
                                 track_id=tid,
                                 event_type=e_type,
                                 entry_time=e_time,
                                 exit_time=x_time,
-                                roles=cam_roles
+                                roles=cam_roles,
+                                gate_id=cam_gate
                             )
                             td["db_id"] = res_id
                             td["logged"] = True
@@ -721,11 +762,16 @@ class AIPipeline(threading.Thread):
                     
                     td["missing_count"] += 1
                     if td["missing_count"] > 15:
-                        state['exits'] += 1
+                        # COUNTER NOTE: 'state[exits]' is now handled by directional movement in the main loop
                         if td["logged"]:
                             # ROLE CHECK: Only log EXIT if the camera has the 'exit' role OR is 'general'
                             role_list = [r.lower() for r in cam_roles]
                             is_exit_cam = ("exit" in role_list) or ("general" in role_list) or (not role_list)
+                            
+                            # LOGIC: Ensure we only formalize an EXIT log if it was actually an OUT direction
+                            # OR if this is an Exit-Only camera
+                            is_direction_out = td.get("direction") == "OUT"
+                            should_log_exit = is_exit_cam and (is_direction_out or ("exit" in role_list and "entry" not in role_list))
                             
                             exit_image_path = ""
                             best_full = td.get("best_full")
@@ -737,9 +783,8 @@ class AIPipeline(threading.Thread):
                                 cv2.imwrite(exit_image_path, best_full)
                                 exit_image_path = f"static/uploads/movement/{exit_filename}"
 
-                            if is_exit_cam:
+                            if should_log_exit:
                                 from app.services.attendance_service import update_exit_logs
-                                # Role-Based: Finalize the exit record with the best exit image
                                 update_exit_logs(
                                     member_id=td.get("db_id"),
                                     movement_id=td.get("movement_id"), 
@@ -749,9 +794,9 @@ class AIPipeline(threading.Thread):
                                     exit_camera_name=cam_name,
                                     exit_camera_id=cam_name
                                 )
-                                log.info(f"AI: Logged Formal Exit for Track {tid} on Exit Camera")
+                                log.info(f"AI: Logged Formal EXIT for Track {tid} (Direction: {td.get('direction')})")
                             else:
-                                log.info(f"AI: Track {tid} disappeared, Camera {cam_name} is NOT an Exit role.")
+                                log.info(f"AI: Track {tid} disappeared (Direct: {td.get('direction')}). Not a formal exit.")
                         
                         del state['track_data'][tid]
             
@@ -851,20 +896,11 @@ class AIPipeline(threading.Thread):
                     if person_crop.size > 0: self._submit_emotion(person_crop, tid, cam_name)
                     emotion = emotion_det._cache.get(tid, "")
 
+                # (Recognition is now handled proactively in the tracking block above)
                 if AI_TOGGLES.get("person", True):
                     cached_res = self.face_rec._cache.get(tid, {"name": "Unknown", "display_id": ""})
                     identity = cached_res["name"]
                     display_id = cached_res["display_id"]
-                    
-                    try:
-                        is_unknown = (identity == "" or identity == "Unknown")
-                        active_rec_tasks = sum(1 for f in self._rec_futures.values() if not f.done())
-                        # Re-verify every 100 frames (approx 3-5 seconds) even if already recognized
-                        # ONLY for human tracks
-                        if td["obj_type"] == "human" and (is_unknown or (state['frame_idx'] % 100 == 0)) and active_rec_tasks < 2:
-                            self._submit_rec(ai_frame, bbox, tid, cam_name)
-                    except Exception as e:
-                        log.error("Sync error: %s", e)
 
                 track_results.append(TrackResult(
                     track_id=tid,

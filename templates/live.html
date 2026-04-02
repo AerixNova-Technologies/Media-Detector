@@ -290,9 +290,14 @@
                 </div>
             </div>
 
-            <div class="heading" style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 8px;">Detected Persons</div>
+            <div class="filter-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div class="heading" style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 0;">Detected Persons</div>
+                <select id="detection-filter" class="cam-filter-select" style="font-size: 8px; background: rgba(255,255,255,0.05); color: var(--text-secondary); border: 1px solid var(--border-light); border-radius: 4px; padding: 1px 4px; outline: none;">
+                    <option value="all">All Cameras</option>
+                </select>
+            </div>
             <div id="person-cards" style="display: flex; flex-direction: column; gap: var(--s-2);">
-                <div style="text-align: center; color: var(--text-tertiary); font-size: 12px; padding: 20px;">Standby ...</div>
+                <div style="text-align: center; color: var(--text-tertiary); font-size: 12px; padding: 20px;">No active detections</div>
             </div>
         </div>
 
@@ -315,6 +320,13 @@
         <div class="saas-modal-body">
             <p id="modal-cam-name" style="font-weight: 600; font-size: 14px; color: var(--accent); margin-bottom: 20px; border-bottom: 1px dashed var(--border-light); padding-bottom: 12px;"></p>
             <form id="roles-form">
+                <label class="role-option" style="border-bottom: 1px solid var(--border-light); margin-bottom: 15px; padding-bottom: 15px;">
+                    <input type="checkbox" value="paused">
+                    <div>
+                        <div style="font-weight: 700; font-size: 13px; color: var(--error);">Pause AI Processing</div>
+                        <div style="font-size: 11px; color: var(--text-tertiary);">Temporarily stop detections for this camera.</div>
+                    </div>
+                </label>
                 <label class="role-option">
                     <input type="checkbox" value="entry">
                     <div>
@@ -336,20 +348,44 @@
                         <div style="font-size: 11px; color: var(--text-tertiary);">Continuous motion and identity tracking.</div>
                     </div>
                 </label>
+
+                <!-- GATE SELECTION -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-surface-alt); border-radius: var(--radius-md); border: 1px solid var(--border-light);">
+                    <div style="font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); margin-bottom: 10px;">Operational Gate Assignment</div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 6px;">Assign Gate Number</div>
+                            <input type="number" id="modal-gate-id" class="saas-input" placeholder="e.g. 1" min="1" max="99" style="height: 38px;">
+                        </div>
+                        <div style="background: var(--bg-surface); border: 1px solid var(--border-light); padding: 8px; border-radius: 6px; color: var(--text-tertiary);">
+                            <i data-lucide="door-open" style="width: 18px;"></i>
+                        </div>
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 8px;">
+                        <i data-lucide="info" style="width: 10px; display: inline; vertical-align: middle;"></i> Linking Entry and Exit cameras with the same Gate ID will consolidate visit logs.
+                    </div>
+                </div>
             </form>
         </div>
         <div class="saas-modal-footer">
-            <button class="saas-btn btn-primary" onclick="saveRoles()" style="width: 100%; padding: 12px; font-weight: 700;">Synchronize Roles</button>
+            <button class="saas-btn btn-primary" onclick="saveRoles()" style="width: 100%; padding: 12px; font-weight: 700;">Synchronize Array Node</button>
         </div>
     </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    loadCameras();
-});
 window.onclick = function(e) {
     if (e.target.classList.contains('saas-modal')) closeRolesModal();
 }
+
+// LIVE SSE UPDATES: Refresh stats when events happen
+document.addEventListener('DOMContentLoaded', () => {
+    const evtSource = new EventSource("/api/sse/stream");
+    evtSource.addEventListener("member_log_update", (e) => {
+        console.log("AI: Live stats refresh triggered by SSE");
+        if (typeof fetchStats === 'function') fetchStats();
+    });
+    evtSource.onerror = (e) => { console.error("SSE Connection lost. Re-establishing..."); };
+});
 </script>
 {% endblock %}

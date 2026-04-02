@@ -234,14 +234,17 @@ def init_db() -> None:
                 password     VARCHAR(255),
                 stream_path  VARCHAR(500),
                 owner_email  VARCHAR(255),
-                roles        JSONB DEFAULT '[]'
+                roles        JSONB DEFAULT '[]',
+                gate_id      VARCHAR(50),
+                transport    VARCHAR(10) DEFAULT 'tcp'
             )
         """, "Local Cameras")
 
         run_block("""
             CREATE TABLE IF NOT EXISTS camera_metadata (
                 camera_id    VARCHAR(100) PRIMARY KEY,
-                roles        JSONB DEFAULT '[]'
+                roles        JSONB DEFAULT '[]',
+                gate_id      VARCHAR(50)
             )
         """, "Camera Metadata Table")
 
@@ -412,6 +415,7 @@ def init_db() -> None:
                 in_image TEXT,
                 out_image TEXT,
                 camera_name VARCHAR(100),
+                out_camera_name VARCHAR(100),
                 movement_count INTEGER DEFAULT 0,
                 total_duration_minutes INTEGER DEFAULT 0,
                 day_status VARCHAR(20) DEFAULT 'open',
@@ -434,6 +438,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS total_duration_minutes INTEGER DEFAULT 0")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS camera_name VARCHAR(100)")
+            cur.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS out_camera_name VARCHAR(100)")
         except Exception:
             conn.rollback()
             cur = conn.cursor()
@@ -534,8 +539,15 @@ def init_db() -> None:
             for table in ["member_timestamp", "movement_log"]:
                 cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS staff_name VARCHAR(100)")
             
-            # Ensure roles column exists in local_cameras
+            # Ensure roles and gate_id columns exist in local_cameras
             cur.execute("ALTER TABLE local_cameras ADD COLUMN IF NOT EXISTS roles JSONB DEFAULT '[]'")
+            cur.execute("ALTER TABLE local_cameras ADD COLUMN IF NOT EXISTS gate_id VARCHAR(50)")
+            cur.execute("ALTER TABLE local_cameras ADD COLUMN IF NOT EXISTS transport VARCHAR(10) DEFAULT 'tcp'")
+            cur.execute("ALTER TABLE camera_metadata ADD COLUMN IF NOT EXISTS gate_id VARCHAR(50)")
+            
+            # Ensure gate_id exists in forensic logs
+            for table in ["member_timestamp", "movement_log"]:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS gate_id VARCHAR(50)")
             
             # Remove person_id if it exists (cleanup)
             for table in ["member_timestamp", "movement_log"]:

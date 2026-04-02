@@ -86,15 +86,20 @@ def draw_status_bar(
     fps: float,
     entries: int = 0,
     exits: int = 0,
+    paused: bool = False,
 ) -> None:
     """Top-left status overlay."""
     h, w = frame.shape[:2]
-    lines = [
+    lines = []
+    if paused:
+        lines.append("AI: PAUSED")
+    
+    lines.extend([
         f"FPS: {fps:.1f}",
         f"Motion: {'YES' if motion else 'NO'}",
-        f"Persons: {n_persons}",
+        f"Persons: {n_persons if not paused else 0}",
         f"In: {entries} | Out: {exits}",
-    ]
+    ])
     font = cv2.FONT_HERSHEY_SIMPLEX
     fscale = 0.55
     fthick = 1

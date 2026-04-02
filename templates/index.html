@@ -895,7 +895,12 @@
               <span class="metric-val accent" id="stat-fps">–</span>
             </div>
 
-            <div class="section-title">Detected Persons</div>
+            <div class="filter-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div class="section-title" style="margin-bottom: 0;">Detected Persons</div>
+              <select id="detection-filter" class="cam-filter-select" style="font-size: 10px; background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; outline: none; transition: all 0.2s;">
+                <option value="all">All Cameras</option>
+              </select>
+            </div>
             <div id="person-cards">
               <div class="no-persons">
                 <div class="no-icon">🧍</div>No persons detected

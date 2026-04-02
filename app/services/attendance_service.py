@@ -84,7 +84,8 @@ def log_person(
     event_type: str | None = 'ENTRY',
     entry_time: datetime | None = None,
     exit_time: datetime | None = None,
-    roles: list[str] | None = None
+    roles: list[str] | None = None,
+    gate_id: str | None = None
 ):
     """Store human detections (staff/unknown) in member_timestamp."""
     detected_at = detected_at or datetime.now()
@@ -95,16 +96,80 @@ def log_person(
     staff_name = str(staff_name) if staff_name is not None else None
     image_path = str(image_path)
     confidence = float(confidence)
-    
+    gate_id = str(gate_id) if gate_id is not None else None
+
+    # GATE LOGIC: If this is an EXIT event at a specific GATE, link it to an existing ENTRY 
+    # instead of creating a new row for the same visit.
+    if event_type == 'EXIT' and gate_id:
+        # GATE LINKING: If it's an EXIT event, try to find a matching ENTRY record on this or another camera at the same gate
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            # 1. Staff Link (Best): If identified, find their most recent ENTRY at this gate today
+            if staff_id:
+                cur.execute("""
+                    SELECT id FROM member_timestamp 
+                    WHERE staff_id = %s AND gate_id = %s AND event_type = 'ENTRY' 
+                      AND detected_at::date = CURRENT_DATE
+                    ORDER BY detected_at DESC LIMIT 1
+                """, (staff_id, gate_id))
+            # 2. Track Link (Fallback): If unknown, try to link by track_id if it's the SAME gate context
+            else:
+                cur.execute("""
+                    SELECT id FROM member_timestamp 
+                    WHERE track_id = %s AND gate_id = %s AND event_type = 'ENTRY'
+                      AND detected_at::date = CURRENT_DATE
+                    ORDER BY detected_at DESC LIMIT 1
+                """, (track_id, gate_id))
+            
+            row = cur.fetchone()
+            if row:
+                existing_id = row['id']
+                log.info(f"AI: [GATE LINK] Linking EXIT event (Staff {staff_id}) at Gate {gate_id} to existing ENTRY #{existing_id}")
+                update_exit_logs(member_id=existing_id, movement_id=None, exit_image=image_path, merged_image="", exit_camera_id=camera_id, exit_camera_name=camera_id)
+                # Ensure the original entry record's event_type is updated to link correctly? 
+                # Actually, update_exit_logs handles the timestamp and images.
+                return existing_id
+        except Exception as gate_exc:
+            log.warning(f"Gate linking failed: {gate_exc}")
+        finally:
+            if conn: conn.close()
+
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+
+        # DEDUPLICATION: Avoid creating multiple "Unknown" or same-staff rows in short bursts
+        # Check if we already have a record for this track on this camera in the last 60 seconds
+        if track_id:
+            # FOR UNKNOWN: Only deduplicate if it's the EXACT same track ID on this camera
+            # (Allows multiple unknown people to walk in together)
+            query = """
+                SELECT id FROM member_timestamp 
+                WHERE person_type = 'unknown' AND camera_id = %s AND track_id = %s
+                  AND detected_at > NOW() - INTERVAL '1 minute'
+                ORDER BY detected_at DESC LIMIT 1
+            """
+            cur.execute(query, (camera_id, track_id))
+            existing_row = cur.fetchone()
+            if existing_row:
+                log.debug(f"AI: [DEDUPE] Linking detection to existing log #{existing_row['id']}")
+                return existing_row['id']
+
+        # Staff Deduplication (if staff_id provided)
+        if staff_id:
+            recent_id = get_recent_sighting(staff_id, camera_id, minutes=2)
+            if recent_id:
+                log.info(f"AI: [DEDUPE] Staff {staff_name} already logged recently as #{recent_id}")
+                return recent_id
+
         cur.execute("""
             INSERT INTO member_timestamp 
-            (camera_id, camera_name, person_type, staff_id, staff_name, image_path, confidence_score, detected_at, track_id, event_type, entry_time, exit_time)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (camera_id, camera_name, person_type, staff_id, staff_name, category, image_path, confidence_score, track_id, event_type, detected_at, entry_time, exit_time, gate_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (camera_id, camera_id, person_type, staff_id, staff_name, image_path, confidence, detected_at, track_id, event_type, entry_time, exit_time))
+        """, (camera_id, camera_id, person_type, staff_id, staff_name, kwargs.get('category', 'Staff'), image_path, confidence, track_id, event_type, detected_at, entry_time, exit_time, gate_id))
         row = cur.fetchone()
         conn.commit()
         res_id = row["id"] if row else None
@@ -113,7 +178,7 @@ def log_person(
         if staff_id and person_type.lower() == 'staff':
             try:
                 from app.services.attendance_service import track_staff_attendance
-                track_staff_attendance(staff_id, staff_name=staff_name, entry_image=image_path, camera_name=camera_id, roles=roles)
+                track_staff_attendance(staff_id, staff_name=staff_name, entry_image=image_path, camera_name=camera_id, roles=roles, gate_id=gate_id)
             except Exception as e:
                 log.warning(f"Failed to auto-trigger attendance in log_person: {e}")
 
@@ -138,8 +203,8 @@ def log_person(
         conn.close()
 
 
-def update_person_identity(member_id: int, staff_id: int, staff_name: str, track_id: int | None = None, movement_id: int | None = None, image_path: str | None = None, confidence: float | None = None):
-    """Update existing logs with staff info (used if recognized late or corrected)."""
+def update_person_identity(member_id: int, staff_id: int, staff_name: str, track_id: int | None = None, movement_id: int | None = None, image_path: str | None = None, confidence: float | None = None, category: str | None = None):
+    """Update existing logs with staff info (including category)."""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -151,11 +216,12 @@ def update_person_identity(member_id: int, staff_id: int, staff_name: str, track
             cur.execute("""
                 UPDATE member_timestamp 
                 SET person_type = 'staff', staff_id = %s, staff_name = %s,
+                    category = COALESCE(%s, category),
                     image_path = COALESCE(%s, image_path),
                     confidence_score = COALESCE(%s, confidence_score)
                 WHERE id = %s
                 RETURNING camera_id, image_path
-            """, (staff_id, staff_name, image_path, confidence, member_id))
+            """, (staff_id, staff_name, category, image_path, confidence, member_id))
             row = cur.fetchone()
             
             if row:
@@ -173,6 +239,7 @@ def update_person_identity(member_id: int, staff_id: int, staff_name: str, track
                 "person_type": "staff",
                 "staff_id": staff_id,
                 "staff_name": staff_name,
+                "category": category, # New
                 "update_type": "late_recognition"
             }, event_type="member_log_update")
 
@@ -182,14 +249,6 @@ def update_person_identity(member_id: int, staff_id: int, staff_name: str, track
             if effective_cam_id:
                 cur.execute("""
                     UPDATE member_timestamp 
-                    SET person_type = 'staff', staff_id = %s, staff_name = %s
-                    WHERE track_id = %s AND camera_id = %s AND detected_at::date = CURRENT_DATE
-                """, (staff_id, staff_name, track_id, effective_cam_id))
-            else:
-                cur.execute("""
-                    UPDATE member_timestamp 
-                    SET person_type = 'staff', staff_id = %s, staff_name = %s
-                    WHERE track_id = %s AND detected_at::date = CURRENT_DATE
                 """, (staff_id, staff_name, track_id))
 
         # 2. Update Movement Logs
@@ -222,18 +281,31 @@ def update_person_identity(member_id: int, staff_id: int, staff_name: str, track
         conn.close()
 
 
-def get_recent_sighting(staff_id: int, camera_id: str, minutes: int = 5) -> int | None:
-    """Find a recent entry for the same staff member to avoid duplicate rows."""
+def get_recent_sighting(staff_id: int | None, camera_id: str, minutes: int = 5, is_unknown: bool = False) -> int | None:
+    """Find a recent entry for the same staff member or unknown to avoid duplicate rows."""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT id FROM member_timestamp
-            WHERE staff_id = %s AND camera_id = %s 
-              AND detected_at > NOW() - INTERVAL '%s minutes'
-              AND event_type = 'ENTRY'
-            ORDER BY detected_at DESC LIMIT 1
-        """, (staff_id, camera_id, minutes))
+        if is_unknown:
+            # For unknowns, we check if ANY unknown person was logged on this camera recently (2 mins)
+            cur.execute("""
+                SELECT id FROM member_timestamp
+                WHERE staff_id IS NULL AND camera_id = %s 
+                  AND (person_type = 'unknown' OR person_type IS NULL)
+                  AND detected_at > NOW() - INTERVAL '2 minutes'
+                  AND event_type = 'ENTRY'
+                ORDER BY detected_at DESC LIMIT 1
+            """, (camera_id,))
+        else:
+            if not staff_id: return None
+            cur.execute("""
+                SELECT id FROM member_timestamp
+                WHERE staff_id = %s AND camera_id = %s 
+                  AND detected_at > NOW() - INTERVAL '%s minutes'
+                  AND event_type = 'ENTRY'
+                ORDER BY detected_at DESC LIMIT 1
+            """, (staff_id, camera_id, minutes))
+            
         row = cur.fetchone()
         return row["id"] if row else None
     except Exception as e:
@@ -248,6 +320,7 @@ def update_exit_logs(member_id: int, movement_id: int, exit_image: str, merged_i
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        from app.extensions import sse_manager
         if member_id:
             cur.execute("""
                 UPDATE member_timestamp 
@@ -255,6 +328,15 @@ def update_exit_logs(member_id: int, movement_id: int, exit_image: str, merged_i
                     exit_camera_id = %s, exit_camera_name = %s
                 WHERE id = %s
             """, (exit_image, merged_image, exit_camera_id, exit_camera_name, member_id))
+            
+            # SSE UPDATE: Let the frontend know this row is now an EXIT
+            sse_manager.announce({
+                "id": member_id,
+                "event_type": "EXIT",
+                "exit_time": datetime.now().strftime("%H:%M:%S"),
+                "update_type": "exit_recorded"
+            }, event_type="member_log_update")
+
         if movement_id:
             cur.execute("""
                 UPDATE movement_log 
@@ -275,7 +357,8 @@ def track_staff_attendance(
     detected_at: datetime | None = None,
     entry_image: str | None = None,
     camera_name: str | None = "Camera",
-    roles: list[str] | None = None
+    roles: list[str] | None = None,
+    gate_id: str | None = None
 ) -> dict:
     """One-row-per-day attendance: first entry fixed, last exit keeps updating."""
     detected_at = detected_at or datetime.now()
@@ -311,12 +394,12 @@ def track_staff_attendance(
                     INSERT INTO attendance
                     (
                         staff_id, staff_name, attendance_date, first_entry_time, last_exit_time,
-                        in_time, out_time, entry_image, in_image, out_image, status, movement_count, day_status, timestamp, camera_name
+                        in_time, out_time, entry_image, in_image, out_image, status, movement_count, day_status, timestamp, camera_name, out_camera_name
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 'open', %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 'open', %s, %s, %s)
                 """, (
                     staff_id, staff_name, today, detected_at, detected_at,
-                    detected_at, detected_at, entry_image, entry_image, entry_image, status_to_set, detected_at, camera_name
+                    detected_at, detected_at, entry_image, entry_image, entry_image, status_to_set, detected_at, camera_name, camera_name
                 ))
             else:
                 log.info(f"DEBUG: Updating EXISTING attendance record {record['id']}")
@@ -328,13 +411,15 @@ def track_staff_attendance(
                         movement_count = COALESCE(movement_count, 0) + 1,
                         timestamp = %s,
                         staff_name = COALESCE(staff_name, %s),
-                        entry_image = COALESCE(entry_image, %s),
-                        in_image = COALESCE(in_image, %s),
+                        entry_image = %s,
+                        in_image = %s,
                         out_image = %s,
-                        camera_name = COALESCE(camera_name, %s)
+                        camera_name = COALESCE(camera_name, %s),
+                        out_camera_name = %s
                     WHERE staff_id = %s AND attendance_date = %s
                 """, (
-                    detected_at, detected_at, status_to_set, detected_at, staff_name, entry_image, entry_image, entry_image, camera_name,
+                    detected_at, detected_at, status_to_set, detected_at, staff_name, 
+                    entry_image, entry_image, entry_image, camera_name, camera_name,
                     staff_id, today
                 ))
         except Exception as schema_exc:

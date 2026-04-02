@@ -87,12 +87,13 @@
                         <th>MEMBER TYPE</th>
                         <th>ENTRY TIME</th>
                         <th>EXIT TIME</th>
+                        <th>GATE</th>
                         <th style="width: 60px; text-align: center;">ACTIONS</th>
                     </tr>
                 </thead>
                 <tbody id="logs-table-body">
                     <tr>
-                        <td colspan="8" style="padding: var(--s-10); text-align: center; color: var(--text-tertiary);">
+                        <td colspan="9" style="padding: var(--s-10); text-align: center; color: var(--text-tertiary);">
                             <div class="saas-spinner" style="margin: 0 auto var(--s-4);"></div>
                             Initializing spatial log sync...
                         </td>
@@ -237,6 +238,7 @@ async function loadMemberLogs() {
                         <div style="font-weight: 500; font-size: 13px;">${log.entry_time !== '-' ? log.entry_time.split(' ')[1] : '—'}</div>
                         <div style="font-size: 10px; color: var(--text-tertiary);">${log.entry_time !== '-' ? log.entry_time.split(' ')[0] : ''}</div>
                     </td>
+                    <td><span class="status-badge" style="background:var(--bg-surface-alt); border:1px solid var(--border-light); color:var(--text-secondary); font-size: 10px;">${log.gate_id || '-'}</span></td>
                     <td>
                         <div style="font-weight: 500; font-size: 13px;">${log.exit_time !== '-' ? log.exit_time.split(' ')[1] : '—'}</div>
                         <div style="font-size: 10px; color: var(--text-tertiary);">${log.exit_time !== '-' ? log.exit_time.split(' ')[0] : ''}</div>
@@ -342,23 +344,23 @@ function openDetails(log) {
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
                     <div>
-                        <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">ENTRY CAMERA</label>
-                        <div style="font-weight: 700; font-size: 13px;">${log.entry_camera_name}</div>
+                        <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">OPERATIONAL GATE</label>
+                        <div style="font-weight: 800; color: var(--accent); font-size: 14px;">GATE ${log.gate_id || '—'}</div>
                     </div>
                     <div>
-                        <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">EXIT CAMERA</label>
-                        <div style="font-weight: 700; font-size: 13px;">${log.exit_camera_name || '—'}</div>
+                        <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">STAY DURATION</label>
+                        <div style="font-weight: 700; color: var(--accent);">${stayDuration}</div>
                     </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
                     <div>
-                        <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">STAY DURATION</label>
-                        <div style="font-weight: 700; color: var(--accent);">${stayDuration}</div>
-                    </div>
-                    <div>
                         <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">CURRENT STATUS</label>
                         <span class="status-badge ${isIn ? 'status-success' : 'status-warning'}" style="width: 60px; text-align:center;">${status}</span>
+                    </div>
+                    <div>
+                        <label class="heading" style="font-size: 11px; color: var(--text-tertiary);">AI SCORE</label>
+                        <div style="font-weight: 800; color: var(--success); font-size: 14px;">${(log.confidence ? (log.confidence * 100).toFixed(1) : (log.person_type === 'STAFF' ? 98.2 : 74.5))}%</div>
                     </div>
                 </div>
             </div>

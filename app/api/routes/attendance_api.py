@@ -311,7 +311,8 @@ def _fetch_logs_from_table(table_name: str):
                 s.staff_id as display_id,
                 s.phone,
                 s.email,
-                m.confidence_score
+                m.confidence_score,
+                m.gate_id
             FROM {table_name} m
             LEFT JOIN staff_profiles s ON m.staff_id = s.id
             {where_sql}
@@ -340,7 +341,8 @@ def _fetch_logs_from_table(table_name: str):
                 "exit_camera_name": r.get('exit_camera_name') or "-",
                 "phone": r.get('phone') or "-",
                 "email": r.get('email') or "-",
-                "confidence": r['confidence_score'] or 0.0
+                "confidence": r['confidence_score'] or 0.0,
+                "gate_id": r.get('gate_id') or "-"
             })
             
         return jsonify({

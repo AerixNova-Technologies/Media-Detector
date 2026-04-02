@@ -113,6 +113,15 @@
           </div>
 
           <div class="saas-input-group span-2">
+            <label><i data-lucide="zap" class="icon-xs"></i> Stream Transport</label>
+            <select id="f-transport" class="saas-input">
+              <option value="tcp">TCP (Reliable / Multi-stream)</option>
+              <option value="udp">UDP (Legacy / Low Latency)</option>
+            </select>
+            <p style="font-size: 10px; color: var(--text-tertiary); margin-top: 4px;">Use UDP for older CP Plus cameras if TCP fails to connect.</p>
+          </div>
+
+          <div class="saas-input-group span-2">
             <label>
               <i data-lucide="file-json-2" class="icon-xs"></i> Stream Definition
               <span class="label-hint" id="brand-path-hint"></span>
@@ -317,7 +326,7 @@ async function removeCamera(id){ if(!confirm('Remove this camera?'))return; awai
 function editConnected(i){
   const c=connectedCameras[i]; if(!c)return;
   editingCameraId=c.id;
-  openConfig({name:c.name,brand:c.brand||'',ip:c.ip,port:c.port||554,username:c.username||'admin',password:c.password||'admin',path:c.path||getRtspPath(c.brand),title:c.name,subtitle:'Edit connected camera'});
+  openConfig({name:c.name,brand:c.brand||'',ip:c.ip,port:c.port||554,username:c.username||'admin',password:c.password||'admin',path:c.path||getRtspPath(c.brand),transport:c.transport||'tcp',title:c.name,subtitle:'Edit connected camera'});
   document.getElementById('save-btn').innerHTML='<i data-lucide="save"></i> Update Camera';
   lucide.createIcons();
 }
@@ -387,7 +396,8 @@ function selectDetected(index){
   const brand=cam.brand||(cam.protocol==='onvif'?'ONVIF':'');
   const port=cam.rtsp_port||cam.port||554;
   const path=cam.rtsp_path||getRtspPath(brand);
-  openConfig({name:cam.name||'Camera '+cam.ip,brand,ip:cam.ip||'',port,username:'admin',password:'admin',path,title:'Detected '+(brand||'Device'),subtitle:'Verify connection parameters'});
+  const transport=cam.transport||'tcp';
+  openConfig({name:cam.name||'Camera '+cam.ip,brand,ip:cam.ip||'',port,username:'admin',password:'admin',path,transport,title:'Detected '+(brand||'Device'),subtitle:'Verify connection parameters'});
   document.getElementById('save-btn').innerHTML='<i data-lucide="plus"></i> Provision Device';
   lucide.createIcons();
 }
@@ -414,6 +424,7 @@ function openConfig({name,brand,ip,port,username,password,path,title,subtitle}){
   document.getElementById('eye-closed').style.display='none';
   document.getElementById('f-path').value=path||'';
   document.getElementById('brand-path-hint').textContent='';
+  document.getElementById('f-transport').value = arguments[0].transport || 'tcp';
   clearPreview(); updateRtspPreview(); lucide.createIcons();
 }
 function openManualForm(){
@@ -436,7 +447,12 @@ function updateRtspPreview(){
   const pass=document.getElementById('f-pass').value||'****';
   const p=document.getElementById('f-path').value||'/...';
   const norm=p.startsWith('/')?p:'/'+p;
-  document.getElementById('rtsp-preview').textContent='rtsp://'+user+':'+pass+'@'+ip+':'+port+norm;
+  
+  // Encode credentials to handle special characters (handles user/pass with @)
+  const encodedUser = encodeURIComponent(user);
+  const encodedPass = encodeURIComponent(pass);
+  
+  document.getElementById('rtsp-preview').textContent='rtsp://'+encodedUser+':'+encodedPass+'@'+ip+':'+port+norm;
 }
 function copyRtsp(){
   navigator.clipboard.writeText(document.getElementById('rtsp-preview').textContent).then(()=>{
@@ -455,7 +471,7 @@ function togglePassword(){
 async function testConnection(){
   const ip=document.getElementById('f-ip').value.trim();
   if(!ip){alert('IP Target required');return;}
-  const payload={ip,port:parseInt(document.getElementById('f-port').value),username:document.getElementById('f-user').value,password:document.getElementById('f-pass').value,path:document.getElementById('f-path').value};
+  const payload={ip,port:parseInt(document.getElementById('f-port').value),username:document.getElementById('f-user').value,password:document.getElementById('f-pass').value,path:document.getElementById('f-path').value,transport:document.getElementById('f-transport').value};
   setPreview('Initiating handshake...');
   try{
     const r=await fetch('/api/test_camera',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -504,7 +520,7 @@ async function saveCamera(){
   if(!name||!ip){alert('Name and IP are required.');return;}
   const pill=document.getElementById('config-brand-pill');
   const brand=pill.style.display!=='none'?pill.textContent.replace('\u25CF ','').trim():'';
-  const payload={name,brand,ip,port:parseInt(document.getElementById('f-port').value),username:document.getElementById('f-user').value,password:document.getElementById('f-pass').value,path:document.getElementById('f-path').value};
+  const payload={name,brand,ip,port:parseInt(document.getElementById('f-port').value),username:document.getElementById('f-user').value,password:document.getElementById('f-pass').value,path:document.getElementById('f-path').value,transport:document.getElementById('f-transport').value};
   const url=editingCameraId?'/api/local_cameras/'+editingCameraId:'/api/local_cameras';
   const method=editingCameraId?'PUT':'POST';
   try{

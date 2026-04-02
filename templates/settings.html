@@ -158,6 +158,18 @@
                 <i data-lucide="info" style="width: 12px; vertical-align: middle;"></i> Identity parameters are synchronized with the central HR node.
             </p>
         </div>
+        
+        <div style="max-width: 500px; margin-top: var(--s-10); padding-top: var(--s-8); border-top: 1px solid var(--border-main); display: flex; flex-direction: column; gap: var(--s-6);">
+            <h3 class="heading" style="font-size: 16px;">Security Credentials</h3>
+            <div style="display: flex; flex-direction: column; gap: var(--s-2);">
+                <label class="heading" style="font-size: 13px;">Modify Access Password</label>
+                <div style="display: flex; gap: var(--s-3);">
+                    <input type="password" id="profile-new-password" class="saas-input" placeholder="Enter New Secure Password" style="flex: 1;">
+                    <button class="saas-btn btn-primary" onclick="updateProfilePassword()">Update Shield</button>
+                </div>
+                <p style="font-size: 11px; color: var(--text-tertiary);">Rotate your access credentials regularly to maintain baseline security standards.</p>
+            </div>
+        </div>
     </div>
 
     <!-- Local Cameras -->
@@ -269,6 +281,27 @@ async function loadUserProfile() {
             document.getElementById('profile-company').value = data.company || '';
         }
     } catch (e) { }
+}
+
+async function updateProfilePassword() {
+    const email = document.getElementById('profile-email').value;
+    const newPass = document.getElementById('profile-new-password').value;
+    if (!newPass || newPass.length < 4) { alert("Access password must be at least 4 characters."); return; }
+    
+    if (!confirm("Initiate credential rotation for this account?")) return;
+    
+    try {
+        const res = await fetch(`/api/settings/users/${email}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: newPass })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("Credentials synchronized successfully.");
+            document.getElementById('profile-new-password').value = '';
+        } else alert("Calibration error: " + data.error);
+    } catch (e) { alert("Network uplink failure."); }
 }
 
 async function loadGlobalSettings() {

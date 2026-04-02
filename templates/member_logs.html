@@ -95,6 +95,7 @@
                         <th>CATEGORY</th>
                         <th>ENTRY TIME</th>
                         <th>EXIT TIME</th>
+                        <th>GATE</th>
                         <th>CAMERA</th>
                         <th style="width: 60px; text-align: center;">DETAILS</th>
                     </tr>
@@ -272,6 +273,7 @@ async function loadMemberLogs() {
                             <div style="font-weight: 500;">${log.exit_time !== '-' ? log.exit_time.split(' ')[0] : '—'}</div>
                             <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">${log.exit_time !== '-' ? log.exit_time.split(' ')[1] : ''}</div>
                         </td>
+                        <td><span class="status-badge" style="background:var(--bg-surface-alt); border:1px solid var(--border-light); color:var(--text-secondary);">${log.gate_id || '-'}</span></td>
                         <td>${log.entry_camera_name || log.camera_name || '—'}</td>
                         <td style="text-align: center;">
                             <button class="icon-btn" onclick='event.stopPropagation(); openDetails(${logJson})'><i data-lucide="eye"></i></button>
@@ -385,18 +387,15 @@ function openDetails(log) {
                         <div style="font-weight: 700; color: var(--accent);">${stayDuration}</div>
                     </div>
                     <div>
-                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px;">CURRENT STATUS</div>
-                         <span class="status-badge ${isIn ? 'status-success' : 'status-warning'}" style="width: 60px; text-align:center;">${status}</span>
+                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px;">OPERATIONAL GATE</div>
+                        <div style="font-weight: 800; color: var(--accent); font-size: 14px;">GATE ${log.gate_id || '—'}</div>
                     </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);">
                     <div>
-                        <div style="font-size: 10px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px;">FIRST SEEN CAMERA (ENTRY)</div>
-                        <div style="display: flex; align-items: center; gap: var(--s-2); font-weight: 600; font-size: 12px;">
-                            <i data-lucide="video" style="width:12px; color:var(--accent);"></i>
-                            ${log.entry_camera_name || log.camera_name || 'System Array'}
-                        </div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px;">CURRENT STATUS</div>
+                         <span class="status-badge ${isIn ? 'status-success' : 'status-warning'}" style="width: 60px; text-align:center;">${status}</span>
                     </div>
                     <div>
                         <div style="font-size: 10px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px;">AI CLASSIFICATION SCORE</div>
@@ -450,6 +449,15 @@ function exportLogs() {
 document.addEventListener('DOMContentLoaded', () => {
     flatpickr("#log-date-range", { mode: "range", dateFormat: "Y-m-d", theme: "dark", onClose: resetAndLoadLogs });
     loadMemberLogs();
+    
+    // LIVE SSE UPDATES: Refresh logs when a recognition is confirmed in the background
+    const evtSource = new EventSource("/api/sse/stream");
+    evtSource.addEventListener("member_log_update", (e) => {
+        const data = JSON.parse(e.data);
+        console.log("AI: Live update received for log #", data.id);
+        loadMemberLogs(); 
+    });
+    evtSource.onerror = (e) => { console.error("SSE Connection lost. Re-establishing..."); };
 });
 </script>
 {% endblock %}

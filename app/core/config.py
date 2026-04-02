@@ -25,6 +25,8 @@ CAMERAS: list[dict] = [
 FRAME_WIDTH:  int   = 640
 FRAME_HEIGHT: int   = 480
 TARGET_FPS:   float = 30.0
+JPEG_QUALITY_LOW:  int = 60    # For grid previews
+JPEG_QUALITY_HIGH: int = 75    # For full screen view
 
 # Professional Surveillance Resolution (YOLO Native 640x384)
 AI_FRAME_WIDTH:  int = 640

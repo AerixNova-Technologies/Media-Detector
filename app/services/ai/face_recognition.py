@@ -25,8 +25,9 @@ class FaceRecognizer:
         self._available = _DEEPFACE_OK
         self._known_faces: list[dict] = [] # List of {"id": int, "name": str, "encoding": list[float]}
         
-        # BALANCED threshold (was 0.42, now 0.45) for faster recognition
-        self.threshold = 0.45 
+        # ULTRA-STRICT threshold to avoid misidentification (was 0.50)
+        self.threshold = 0.38 
+        self.margin = 0.06
         # Minimum size of face crop to attempt recognition
         self.min_face_size = 10 
 
@@ -55,10 +56,17 @@ class FaceRecognizer:
                 if not os.path.isdir(person_dir):
                     continue
                 
-                cur.execute("SELECT id, staff_id FROM staff_profiles WHERE name = %s", (person_name,))
+                # Case-insensitive DB lookup (Including newly added Category)
+                cur.execute("SELECT id, name, staff_id, category FROM staff_profiles WHERE LOWER(name) = LOWER(%s)", (person_name,))
                 row = cur.fetchone()
-                db_id = row['id'] if row else None
-                display_id = row['staff_id'] if row else ""
+                if not row:
+                    log.warning("FaceRec: No database profile found for folder '%s'. Skipping.", person_name)
+                    continue
+
+                db_id = row['id']
+                db_name = row['name']
+                display_id = row['staff_id'] or ""
+                category = row.get('category', 'Staff')
 
                 person_embs = []
                 for filename in os.listdir(person_dir):
@@ -81,9 +89,10 @@ class FaceRecognizer:
                         "id": db_id,
                         "name": person_name, 
                         "display_id": display_id, 
+                        "category": category, # New
                         "encoding": avg_emb
                     })
-                    log.info("FaceRec: Loaded staff member: %s (%d photos)", person_name, len(person_embs))
+                    log.info("FaceRec: Loaded staff member: %s [Category: %s] (%d photos)", db_name, category, len(person_embs))
             
             # ATOMIC SWAP: No transient empty states!
             self._known_faces = loaded_faces
@@ -118,6 +127,7 @@ class FaceRecognizer:
             if enforce_detection and (h < self.min_face_size or w < self.min_face_size):
                 return None
 
+            log.info(f"FaceRec: Starting represent (Backend={detector_backend or self.backend})...")
             result = _DF.represent(
                 img_path=img,
                 model_name=self.model_name,
@@ -125,16 +135,21 @@ class FaceRecognizer:
                 enforce_detection=enforce_detection, 
                 align=True
             )
+            log.info(f"FaceRec: Represent finished (Result ok={bool(result)})")
             if result and len(result) > 0:
                 return result[0]["embedding"]
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"FaceRec: extract_embedding error: {e}")
         return None
 
     def recognize(self, face_crop: np.ndarray, track_id: int) -> dict:
         """Compare current face embedding against known list in memory."""
         default_res = {"id": None, "name": "Unknown", "display_id": ""}
         if not self._available or face_crop is None or face_crop.size == 0 or not self._known_faces:
+            if not self._known_faces:
+                log.warning(f"FaceRec: Cannot recognize Track {track_id} - Known database is empty!")
+            elif not self._available:
+                log.warning("FaceRec: Engine not available (DeepFace load failed)")
             return default_res
 
         counter = self._counters.get(track_id, 0)
@@ -150,8 +165,8 @@ class FaceRecognizer:
             self._cache[track_id] = default_res
             return default_res
 
-        # Extract current embedding
-        current_enc = self.extract_embedding(face_crop)
+        # Extract current embedding (Relaxed detection since we already cropped)
+        current_enc = self.extract_embedding(face_crop, enforce_detection=False)
         if current_enc is None:
             log.warning(f"FaceRec: Track {track_id} - Could not extract embedding from face crop.")
             return {"id": None, "name": "Unknown", "display_id": "Unrecognized"}
@@ -161,6 +176,7 @@ class FaceRecognizer:
         best_name = "Unknown"
         best_display_id = ""
         best_dist = float('inf')
+        second_best_dist = float('inf')
         
         # We'll use a margin (e.g. 0.05) to ensure the match is distinct
         # If the gap between top-1 and top-2 is too small, it's ambiguous.
@@ -169,22 +185,37 @@ class FaceRecognizer:
         for identity in self._known_faces:
             dist = cosine(current_enc, identity["encoding"])
             if dist < best_dist:
+                second_best_dist = best_dist
                 best_dist = dist
                 best_id = identity.get("id")
                 best_name = identity["name"]
                 best_display_id = identity.get("display_id", "")
+            elif dist < second_best_dist:
+                second_best_dist = dist
         
-        log.info(f"FaceRec: Track {track_id} - Best Match: {best_name}, Distance: {best_dist:.4f} (Threshold: {self.threshold})")
+        # DEBUG LOG: See how close we are to a match
+        if best_name != "Unknown":
+            log.info(f"FaceRec: Best match for Track {track_id} is '{best_name}' with dist {best_dist:.3f} (Threshold: {self.threshold:.2f})")
 
-        # Security Gate:
-        # 1. Must be below static threshold (0.48)
-        # 2. Relaxed distinctness requirement (was 0.02)
-        if best_dist <= self.threshold:
+        # ULTRA-STRICT Security Gate:
+        # 1. Must be below threshold (0.38 - Very high confidence)
+        # 2. Must be DISTINCT (Significant gap between Top 1 and Top 2)
+        # 3. Handle ambiguity specifically
+        
+        confidence_gap = second_best_dist - best_dist
+        is_ambiguous = confidence_gap < 0.05 # REQUIRE at least 0.05 gap for any person match
+        
+        if is_ambiguous and best_dist < self.threshold:
+             log.warning(f"FaceRec: Ambiguity detected between candidates (Gap: {confidence_gap:.3f}). Rejecting match for Track {track_id}")
+             res = default_res # Force Unknown if unclear
+        elif best_dist < self.threshold and (not is_ambiguous or best_dist < 0.30):
+            # If extremely confident (dist < 0.30), we can be slightly less strict with the gap
             res = {"id": best_id, "name": best_name, "display_id": best_display_id}
-            log.info(f"FaceRec: Recognized {best_name} (dist={best_dist:.3f})")
+            log.info(f"FaceRec: Recognized {best_name} (dist={best_dist:.3f}, gap={confidence_gap:.3f})")
         else:
-            log.info(f"FaceRec: No match for Track {track_id} (best: {best_name} at {best_dist:.3f})")
+            log.info(f"FaceRec: No match for Track {track_id} (best: {best_name} at {best_dist:.3f}, gap={confidence_gap:.3f})")
             res = default_res
+            
         self._cache[track_id] = res
         return res
 

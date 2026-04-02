@@ -59,6 +59,18 @@ from app import create_app   # noqa: E402
 
 flask_app = create_app()
 
+def start_ai_delayed():
+    """Starts camera monitoring in the background after a short delay."""
+    import time
+    from app.api.routes.camera import start_all_monitoring
+    # Wait for the web server to bind to the port first
+    time.sleep(5)
+    log.info("MISSION CONTROL AI: Initializing background monitoring...")
+    start_all_monitoring()
+
+import threading
+threading.Thread(target=start_ai_delayed, daemon=True, name="DeferredMonitor").start()
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

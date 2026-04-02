@@ -163,24 +163,21 @@ class PersonDetector:
                 bw, bh = x2 - x1, y2 - y1
                 cls_id = int(cls)
                 
-                # REJECTION FILTERS TO BLOCK CEILING FANS / ARTIFACTS:
-                # 1. Ceiling Zone: Ignore small objects in the top 15% of the frame (Fans)
-                if y2 < (img_h * 0.15) and bh < (img_h * 0.20):
+                # REJECTION FILTERS: Relaxed to allow for seated office staff
+                
+                # 1. Ceiling Zone: Ignore ONLY very tiny objects in the extreme top 10% (Fans)
+                if y2 < (img_h * 0.10) and bh < (img_h * 0.10):
                     continue
                 
-                # 2. Min Height: Ignore tiny artifacts (< 30px)
-                if bh < 30:
+                # 2. Min Height: Ignore tiny artifacts (< 20px)
+                if bh < 20:
                     continue
                     
-                # 3. Aspect Ratio: 
-                # Humans (vertical) vs Animals (often horizontal/wide)
-                ratio = bw / bh
-                if cls_id == self.PERSON_CLASS_ID:
-                    if ratio < 0.10 or ratio > 2.5: # Human aspect ratio guards
-                        continue
-                else:
-                    if ratio < 0.05 or ratio > 4.5: # Relaxed for animals (e.g. dogs walking/running)
-                        continue
+                # 3. Aspect Ratio: Removed for now to allow for hunched seated staff
+                # ratio = bw / bh
+                # if cls_id == self.PERSON_CLASS_ID:
+                #     if ratio < 0.05 or ratio > 4.5: 
+                #         continue
                 
                 track_id = int(tid)
                 tracks.append([x1, y1, x2, y2, float(conf), track_id, cls_id])

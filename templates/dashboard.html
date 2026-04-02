@@ -488,6 +488,14 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     updateGreeting();
     initHeroCarousel();
+
+    // LIVE SSE UPDATES: Refresh logs when a recognition is confirmed in the background
+    const evtSource = new EventSource("/api/sse/stream");
+    evtSource.addEventListener("member_log_update", (e) => {
+        console.log("AI: Dashboard refresh triggered by SSE");
+        loadDashboard(); 
+    });
+    evtSource.onerror = (e) => { console.error("SSE Connection lost. Re-establishing..."); };
 });
 </script>
 {% endblock %}

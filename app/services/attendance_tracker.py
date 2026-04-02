@@ -55,6 +55,9 @@ class AttendanceTracker:
         # identity -> camera name where they were last seen
         self._camera: dict[str, str] = {}
 
+        # identity -> gate ID where they were last seen
+        self._gate: dict[str, str | None] = {}
+
         # identity -> monotonic time when they entered (for duration calc)
         self._entry_time: dict[str, float] = {}
 
@@ -68,7 +71,7 @@ class AttendanceTracker:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def heartbeat(self, identity: str, camera_name: str, roles: list[str] = []) -> None:
+    def heartbeat(self, identity: str, camera_name: str, roles: list[str] = [], gate_id: str | None = None) -> None:
         """
         Called by the pipeline on every frame where `identity` is visible.
         Records the sighting and triggers an IN event if they were OUT.
@@ -82,13 +85,14 @@ class AttendanceTracker:
         with self._lock:
             self._last_seen[identity] = now_mono
             self._camera[identity] = camera_name
+            self._gate[identity] = gate_id
             prev_state = self._state.get(identity)
 
         if prev_state != "IN":
             # ROLE CHECK: Only transition OUT→IN if camera is an Entry camera
             is_entry = (not roles) or ("entry" in [r.lower() for r in roles])
             if is_entry:
-                self._record_event(identity, "IN", camera_name, now_wall)
+                self._record_event(identity, "IN", camera_name, now_wall, gate_id=gate_id)
                 with self._lock:
                     self._state[identity] = "IN"
                     self._entry_time[identity] = now_mono
@@ -156,6 +160,7 @@ class AttendanceTracker:
                 state = self._state.get(identity)
                 last = self._last_seen.get(identity, 0)
                 camera = self._camera.get(identity, "")
+                gate_id = self._gate.get(identity)
                 entry_t = self._entry_time.get(identity)
 
             if state != "IN":
@@ -172,14 +177,6 @@ class AttendanceTracker:
             )
             
             # ROLE CHECK: Only record OUT event if the last camera seen on was an EXit camera
-            # This is a bit tricky if they were last seen on a General camera...
-            # But the requirement says "Exit detection should trigger only from cameras assigned as 'Exit'."
-            # Let's check roles for the camera where they were last seen.
-            # Wait, we don't have roles in self._camera. We should probably store them or fetch them.
-            # For now, let's assume if it wasn't an Exit camera, we just mark them as OUT in memory but don't log a formal event?
-            # Actually, standard behavior is usually best here unless specified otherwise.
-            # I'll fetch roles for the camera.
-            
             last_cam_roles = []
             try:
                 from app.api.routes.camera import get_all_cameras
@@ -192,7 +189,7 @@ class AttendanceTracker:
             is_exit_cam = "exit" in [r.lower() for r in last_cam_roles]
             if is_exit_cam:
                 self._record_event(identity, "OUT", camera, now_wall,
-                                   entry_mono=entry_t, notify=notify_exit)
+                                   entry_mono=entry_t, notify=notify_exit, gate_id=gate_id)
             else:
                 log.info(f"AT: {identity} disappeared from non-exit camera {camera}. Marking OUT in memory only.")
 
@@ -234,12 +231,13 @@ class AttendanceTracker:
 
     def _record_event(
         self,
-        identity: str,
+        target_identity: str,
         event_type: str,          # 'IN' | 'OUT'
         camera_name: str,
         wall_time: datetime,
         entry_mono: Optional[float] = None,
         notify: bool = True,
+        gate_id: str | None = None
     ) -> None:
         """Write to movement_log and upsert today's attendance summary."""
         try:
@@ -250,11 +248,11 @@ class AttendanceTracker:
             # Resolve staff_id
             cur.execute(
                 "SELECT id FROM staff_profiles WHERE name = %s LIMIT 1",
-                (identity,),
+                (target_identity,),
             )
             row = cur.fetchone()
             if not row:
-                log.warning("AttendanceTracker: staff '%s' not in staff_profiles", identity)
+                log.warning("AttendanceTracker: staff '%s' not in staff_profiles", target_identity)
                 cur.close()
                 conn.close()
                 return
@@ -264,7 +262,7 @@ class AttendanceTracker:
 
             # 1. Insert movement_log
             from app.services.attendance_service import log_movement
-            log_movement(camera_name, "") # Legacy tracker events don't have images here
+            log_movement(camera_name, "", gate_id=gate_id)
 
             # 2. Upsert attendance daily summary
             if event_type == "IN":
@@ -308,7 +306,7 @@ class AttendanceTracker:
             conn.commit()
             cur.close()
             conn.close()
-            log.info("Recorded %s event for %s (staff_id=%d)", event_type, identity, staff_id)
+            log.info("Recorded %s event for %s (staff_id=%d)", event_type, target_identity, staff_id)
 
         except Exception as exc:
             log.error("AttendanceTracker._record_event failed: %s", exc)
@@ -320,7 +318,7 @@ class AttendanceTracker:
                 icon = "🟢" if event_type == "IN" else "🔴"
                 verb = "entered" if event_type == "IN" else "exited"
                 msg = (
-                    f"{icon} *{identity}* has {verb} the office.\n"
+                    f"{icon} *{target_identity}* has {verb} the office.\n"
                     f"📍 Camera: {camera_name}\n"
                     f"🕐 Time: {wall_time.strftime('%H:%M:%S')}"
                 )
@@ -329,7 +327,7 @@ class AttendanceTracker:
                     msg += f"\n⏱ Duration: {duration_mins} min"
                 self.notifier.send_message(msg)
             except Exception as exc:
-                log.warning("Notification failed for %s %s: %s", identity, event_type, exc)
+                log.warning("Notification failed for %s %s: %s", target_identity, event_type, exc)
 
     def _close_day(self, identity: str, today: date) -> None:
         """Mark attendance day_status = closed for this person."""

@@ -92,12 +92,23 @@ def _issue_preview_token(rtsp_url: str, owner_email: str | None) -> str:
     return token
 
 
-def _test_rtsp_connection(rtsp_url: str) -> tuple[bool, object | None]:
-    # Set FFMPEG transport to TCP (interleaved) to match VLC behavior
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+from app.utils.stream import encode_rtsp_url
+
+def _test_rtsp_connection(rtsp_url: str, transport: str = "tcp") -> tuple[bool, object | None]:
+    # Use safe encoding (handles passwords with @)
+    rtsp_url = encode_rtsp_url(rtsp_url)
+
+    # Use robust surveillance flags FOR TESTING (Refined for firmware compatibility)
+    trans = transport if transport in ["tcp", "udp"] else "tcp"
+    options = f"rtsp_transport;{trans}|fflags;nobuffer|probesize;32|analyzeduration;0|stimeout;5000000|rtsp_flags;prefer_tcp"
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = options
     
     log.info("Opening RTSP connection: %s", rtsp_url)
-    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+    try:
+        cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+    finally:
+        if "OPENCV_FFMPEG_CAPTURE_OPTIONS" in os.environ:
+            del os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"]
     
     if not cap.isOpened():
         log.warning("OpenCV failed to open RTSP stream")
@@ -105,8 +116,8 @@ def _test_rtsp_connection(rtsp_url: str) -> tuple[bool, object | None]:
         return False, None
 
     ok, frame = False, None
-    # Retry for up to ~10 seconds - some cameras take time to Negotiate/Handshake
-    for i in range(50):
+    # Retry for up to ~5 seconds (faster timeout for UI responsiveness)
+    for i in range(25):
         ok, frame = cap.read()
         if ok and frame is not None:
             log.info("RTSP Test SUCCESS: Frame read after %d attempts", i+1)
@@ -121,6 +132,9 @@ def _test_rtsp_connection(rtsp_url: str) -> tuple[bool, object | None]:
 
 
 def _generate_mjpeg(rtsp_url: str, max_duration_sec: float | None = None):
+    # Safely encode credentials (handles passwords with @)
+    rtsp_url = encode_rtsp_url(rtsp_url)
+    
     cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     if not cap.isOpened():
         cap.release()
@@ -194,7 +208,7 @@ def get_all_cameras(force: bool = False, user_email: str | None = None) -> list[
             conn = get_db_connection()
             cur  = conn.cursor()
             cur.execute(
-                "SELECT id, name, brand, ip_address, roles FROM local_cameras WHERE owner_email = %s",
+                "SELECT id, name, brand, ip_address, roles, gate_id, transport FROM local_cameras WHERE owner_email = %s",
                 (user_email,),
             )
             import json
@@ -214,20 +228,24 @@ def get_all_cameras(force: bool = False, user_email: str | None = None) -> list[
                     "type":   "local",
                     "brand":  row["brand"],
                     "ip":     row["ip_address"],
-                    "roles":  r_list
+                    "roles":  r_list,
+                    "gate_id": row.get("gate_id"),
+                    "transport": row.get("transport", "tcp")
                 })
             
             # Also fetch metadata for hardcoded cameras (like webcam)
-            cur.execute("SELECT camera_id, roles FROM camera_metadata")
-            meta_map = {r["camera_id"]: r["roles"] for r in cur.fetchall()}
+            cur.execute("SELECT camera_id, roles, gate_id FROM camera_metadata")
+            meta_map = {r["camera_id"]: {"roles": r["roles"], "gate": r["gate_id"]} for r in cur.fetchall()}
             for cam in cameras:
-                if cam["id"] == "webcam" and "webcam" in meta_map:
-                    r_list = meta_map["webcam"]
+                if cam["id"] in meta_map:
+                    m_data = meta_map[cam["id"]]
+                    r_list = m_data["roles"]
                     if isinstance(r_list, str):
                         try: r_list = json.loads(r_list)
                         except: r_list = []
                     if isinstance(r_list, list):
                         cam["roles"] = r_list
+                    cam["gate_id"] = m_data["gate"]
 
             cur.close()
             conn.close()
@@ -243,7 +261,8 @@ def get_all_cameras(force: bool = False, user_email: str | None = None) -> list[
 @login_required
 def api_cameras():
     user_email = session.get("user")
-    cameras = get_all_cameras(user_email=user_email)
+    refresh = request.args.get("refresh") == "1"
+    cameras = get_all_cameras(user_email=user_email, force=refresh)
     return jsonify(cameras)
 
 
@@ -265,6 +284,7 @@ def api_update_camera_roles(cam_id: str):
     """Save role assignments (Entry/Exit/General) for any camera."""
     data = request.get_json(force=True)
     roles = data.get("roles", [])
+    gate_id = data.get("gate_id")
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -274,16 +294,16 @@ def api_update_camera_roles(cam_id: str):
         if cam_id.startswith("local_"):
             db_id = cam_id.replace("local_", "")
             cur.execute(
-                "UPDATE local_cameras SET roles = %s WHERE id = %s",
-                (roles_json, db_id)
+                "UPDATE local_cameras SET roles = %s, gate_id = %s WHERE id = %s",
+                (roles_json, gate_id, db_id)
             )
         else:
             # For non-local (webcam/imou), use camera_metadata table
             cur.execute("""
-                INSERT INTO camera_metadata (camera_id, roles)
-                VALUES (%s, %s)
-                ON CONFLICT (camera_id) DO UPDATE SET roles = EXCLUDED.roles
-            """, (cam_id, roles_json))
+                INSERT INTO camera_metadata (camera_id, roles, gate_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (camera_id) DO UPDATE SET roles = EXCLUDED.roles, gate_id = EXCLUDED.gate_id
+            """, (cam_id, roles_json, gate_id))
             
         conn.commit()
         cur.close()
@@ -300,62 +320,33 @@ def api_update_camera_roles(cam_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-def start_all_monitoring() -> int:
-    """Helper to initiate background AI threads for all configured cameras."""
+def start_all_monitoring():
+    """Initializes monitoring for all cameras currently in the database."""
     try:
-        from app.db.session import get_db_connection
+        from flask import session
         conn = get_db_connection()
-        cur = conn.cursor()
-        # Fetch all local cameras
-        cur.execute("SELECT name, ip_address, port, username, password, stream_path, roles FROM local_cameras")
+        cur  = conn.cursor()
+        cur.execute("SELECT id, name, ip_address, port, username, password, stream_path, transport, roles, gate_id FROM local_cameras")
         rows = cur.fetchall()
-        
-        # Also fetch roles for the webcam
-        cur.execute("SELECT roles FROM camera_metadata WHERE camera_id = 'webcam'")
-        row_webcam = cur.fetchone()
-        
         cur.close()
         conn.close()
 
-        count = 0
-        import json
-        
-        # 1. Start Built-in Webcam (source=0)
-        webcam_roles = []
-        if row_webcam:
-            webcam_roles = row_webcam.get("roles", [])
-            if isinstance(webcam_roles, str):
-                try: webcam_roles = json.loads(webcam_roles)
-                except: webcam_roles = []
-            if not isinstance(webcam_roles, list):
-                webcam_roles = []
-            
-        log.info("Auto-starting monitor for: Webcam (Built-in) (source=0)")
-        if cam_mgr.start_monitoring(0, "Webcam (Built-in)", roles=webcam_roles):
-            count += 1
+        active_names = [r[1] for r in rows]
+        # Prune ghosts: Stop any monitor NOT in the DB
+        if cam_mgr:
+            current_nodes = list(cam_mgr._monitoring_nodes.keys()) if hasattr(cam_mgr, '_monitoring_nodes') else []
+            for name in current_nodes:
+                if name not in active_names and name != "Webcam (Built-in)":
+                   log.warning("AI: Pruning orphan ghost monitor: %s", name)
+                   cam_mgr.stop_monitoring(name)
 
-        # 2. Start all IP Cameras from DB
-        for row in rows:
-            name = row["name"]
-            # Important: Build encoded RTSP URL to handle '#' correctly
-            url = _build_rtsp_url(row["ip_address"], row["port"], row["username"], row["password"], row["stream_path"])
-            
-            # Parse roles (Handle both JSONB list and string)
-            roles = row.get("roles", [])
-            if isinstance(roles, str):
-                try: roles = json.loads(roles)
-                except: roles = []
-            if not isinstance(roles, list):
-                roles = []
-
-            log.info("Auto-starting monitor for: %s", name)
-            if cam_mgr.start_monitoring(url, name, roles=roles):
-                count += 1
-        
-        return count
+        for r in rows:
+            cam_id, name, ip, port, user, pw, path, transport, roles, gate_id = r
+            rtsp = _build_rtsp_url(ip, port, user, pw, path)
+            log.info("AI: Auto-starting monitor for %s (%s)", name, ip)
+            cam_mgr.start_monitoring(rtsp, name, roles or ["general"], camera_id=str(cam_id), gate_id=gate_id, transport=transport)
     except Exception as e:
-        log.error("Failed to auto-start monitoring: %s", e)
-        return 0
+        log.error("AI: Failed to start all monitoring: %s", e)
 
 
 @camera_bp.route("/api/select", methods=["POST"])
@@ -370,7 +361,7 @@ def api_select():
         return jsonify({"error": "Camera not found"}), 404
 
     if cam["type"] == "webcam":
-        cam_mgr.start(0, cam["name"], roles=cam.get("roles", []))
+        cam_mgr.start(0, cam["name"], roles=cam.get("roles", []), gate_id=cam.get("gate_id"))
 
     elif cam["type"] == "imou":
         try:
@@ -392,7 +383,7 @@ def api_select():
             conn  = get_db_connection()
             cur   = conn.cursor()
             cur.execute(
-                "SELECT ip_address, port, username, password, stream_path FROM local_cameras WHERE id = %s",
+                "SELECT ip_address, port, username, password, stream_path, transport FROM local_cameras WHERE id = %s",
                 (db_id,),
             )
             row = cur.fetchone()
@@ -403,8 +394,8 @@ def api_select():
                 return jsonify({"error": "Local camera record not found"}), 404
 
             rtsp_url = _build_rtsp_url(row["ip_address"], row["port"], row["username"], row["password"], row["stream_path"])
-            log.info("Starting local RTSP: %s", rtsp_url)
-            cam_mgr.start(rtsp_url, cam["name"], roles=cam.get("roles", []))
+            log.info("Starting local RTSP: %s (Transport: %s)", rtsp_url, row.get("transport"))
+            cam_mgr.start(rtsp_url, cam["name"], roles=cam.get("roles", []), gate_id=cam.get("gate_id"), transport=row.get("transport", "tcp"))
         except Exception as e:
             log.error("Local camera start error: %s", e)
             return jsonify({"error": str(e)}), 500
@@ -426,13 +417,30 @@ def api_stream_id():
 
 @camera_bp.route("/video_feed")
 def video_feed():
-    """MJPEG live stream endpoint ΓÇö one frame per ~33ms."""
+    """MJPEG live stream endpoint — one frame per ~33ms (Main View)."""
     def generate():
         while True:
             frame = cam_mgr.get_jpeg()
             if frame:
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
             time.sleep(0.033)
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@camera_bp.route("/api/camera_preview_stream/<cam_id>")
+@login_required
+def camera_preview_stream(cam_id: str):
+    """Specific MJPEG preview stream for the dashboard grid (Low FPS)."""
+    def generate():
+        while True:
+            # Use the existing background accessor for specific cameras
+            frame_bytes = cam_mgr.get_background_jpeg(cam_id)
+            if frame_bytes:
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+                time.sleep(0.5) # Optimized for dashboard performance
+            else:
+                # If specific monitor not found, tiny sleep and retry
+                time.sleep(1.0)
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
@@ -452,6 +460,7 @@ def api_local_cameras():
         user  = data.get("username", "")
         pw    = data.get("password", "")
         path  = data.get("path", "")
+        transport = data.get("transport", "tcp")
 
         if not name or not ip:
             return jsonify({"success": False, "error": "Name and IP are required"}), 400
@@ -461,9 +470,9 @@ def api_local_cameras():
             cur  = conn.cursor()
             cur.execute(
                 """INSERT INTO local_cameras
-                   (name, brand, ip_address, port, username, password, stream_path, owner_email)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-                (name, brand, ip, port, user, pw, path, email),
+                   (name, brand, ip_address, port, username, password, stream_path, owner_email, transport)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (name, brand, ip, port, user, pw, path, email, transport),
             )
             conn.commit()
             cur.close()
@@ -477,7 +486,7 @@ def api_local_cameras():
         conn = get_db_connection()
         cur  = conn.cursor()
         cur.execute(
-            "SELECT id, name, brand, ip_address, port, username, password, stream_path "
+            "SELECT id, name, brand, ip_address, port, username, password, stream_path, transport "
             "FROM local_cameras WHERE owner_email = %s",
             (email,),
         )
@@ -486,7 +495,7 @@ def api_local_cameras():
                 "id": r["id"], "name": r["name"], "brand": r["brand"],
                 "ip": r["ip_address"], "port": r["port"],
                 "username": r["username"], "password": r["password"],
-                "path": r["stream_path"],
+                "path": r["stream_path"], "transport": r.get("transport", "tcp")
             }
             for r in cur.fetchall()
         ]
@@ -517,14 +526,19 @@ def api_test_local_camera():
     user  = data.get("username", "")
     pw    = data.get("password", "")
     path  = data.get("path", "")
+    transport = data.get("transport", "tcp")
 
     if not ip:
         return jsonify({"success": False, "error": "IP Address is required"}), 400
 
     rtsp_url = _build_rtsp_url(ip=ip, port=port, user=user, password=pw, path=path)
+    
+    # Senior Fix: Stop any existing background monitor for this IP to avoid connection limits/conflicts
+    if cam_mgr:
+        cam_mgr.stop_monitoring_by_ip(ip)
 
-    log.info("Testing camera connection: %s", rtsp_url)
-    ok, frame = _test_rtsp_connection(rtsp_url)
+    log.info("Testing camera connection: %s (Transport: %s)", rtsp_url, transport)
+    ok, frame = _test_rtsp_connection(rtsp_url, transport=transport)
     if not ok:
         return jsonify({"success": False, "error": "Connection Failed"})
 
@@ -554,12 +568,18 @@ def api_test_camera():
     user = data.get("username", "")
     pw = data.get("password", "")
     path = data.get("path", "")
+    transport = data.get("transport", "tcp")
 
     if not ip:
         return jsonify({"success": False, "error": "IP Address is required"}), 400
 
     rtsp_url = _build_rtsp_url(ip=ip, port=port, user=user, password=pw, path=path)
-    ok, _ = _test_rtsp_connection(rtsp_url)
+    
+    # Senior Fix: Stop any existing background monitor for this IP to avoid connection limits/conflicts
+    if cam_mgr:
+        cam_mgr.stop_monitoring_by_ip(ip)
+
+    ok, _ = _test_rtsp_connection(rtsp_url, transport=transport)
     if not ok:
         return jsonify({"success": False, "error": "Connection Failed"})
 
@@ -631,6 +651,15 @@ def api_local_camera_item(cam_id: int):
         if request.method == "DELETE":
             conn = get_db_connection()
             cur  = conn.cursor()
+            
+            # Senior Fix: Stop background AI monitoring before deleting from DB
+            cur.execute("SELECT name FROM local_cameras WHERE id = %s", (cam_id,))
+            row = cur.fetchone()
+            if row:
+                cam_name = row[0]
+                log.info("AI: Stopping monitor for '%s' before database removal", cam_name)
+                cam_mgr.stop_monitoring(cam_name)
+
             cur.execute(
                 "DELETE FROM local_cameras WHERE id = %s AND owner_email = %s",
                 (cam_id, email),
@@ -648,6 +677,7 @@ def api_local_camera_item(cam_id: int):
         user = data.get("username", "")
         pw = data.get("password", "")
         path = data.get("path", "")
+        transport = data.get("transport", "tcp")
 
         if not name or not ip:
             return jsonify({"success": False, "error": "Name and IP are required"}), 400
@@ -662,9 +692,10 @@ def api_local_camera_item(cam_id: int):
                    port = %s,
                    username = %s,
                    password = %s,
-                   stream_path = %s
+                   stream_path = %s,
+                   transport = %s
                WHERE id = %s AND owner_email = %s""",
-            (name, brand, ip, port, user, pw, path, cam_id, email),
+            (name, brand, ip, port, user, pw, path, transport, cam_id, email),
         )
         conn.commit()
         updated = cur.rowcount
@@ -678,8 +709,5 @@ def api_local_camera_item(cam_id: int):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# Auto-start monitoring for all cameras once the app is ready
-try:
-    start_all_monitoring()
-except Exception:
-    pass
+# [REMOVED] Auto-start monitoring at top-level. 
+# This is now handled asynchronously in run.py to prevent blocking the UI.

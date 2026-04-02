@@ -557,10 +557,31 @@ def camera_preview_stream(cam_id: str):
     if cam is None:
         return Response("Camera not found", status=404)
 
-    # If this specific camera is already the ACTIVE one in CameraManager,
-    # serve the frames directly from CameraManager. This is MUCH better:
-    # 1. No double-opening the camera (critical for webcams).
-    # 2. Includes the AI overlays (even better for the grid!).
+    # NEW: Try to get frame from existing background monitor first!
+    # This prevents 'Device Busy' for webcams and redundant RTSP connections.
+    is_bg = False
+    if cam_mgr and hasattr(cam_mgr, "_monitoring_nodes"):
+        with cam_mgr._monitoring_lock:
+            # We match by ID slug or camera name
+            is_bg = any(str(node.get("id")) == str(cam_id) or name == str(cam_id) 
+                        for name, node in cam_mgr._monitoring_nodes.items())
+
+    if is_bg:
+        log.info("Serving grid preview from background monitor for: %s", cam_id)
+        
+        def generate_from_background(cid):
+            while True:
+                # Use the optimized background buffer reader
+                frame = cam_mgr.get_background_jpeg(cid)
+                if frame:
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                else:
+                    time.sleep(0.1)
+                time.sleep(0.04)
+        
+        return Response(generate_from_background(cam_id), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+    # If this specific camera is already the ACTIVE one in Detection Pipeline...
     if cam_mgr._active and cam_mgr.camera_name == cam["name"]:
         def generate_from_mgr():
             while True:

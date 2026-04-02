@@ -22,7 +22,7 @@ _cache_lock = threading.Lock()
 _detected_cache: list[dict] = []
 _detected_cache_ts: float = 0.0
 
-_COMMON_CAMERA_PORTS = (554, 8554, 80, 81, 8000, 8080, 8899)
+_COMMON_CAMERA_PORTS = (554, 8554, 3702, 80, 81, 8000, 8080, 8899)
 _SCAN_TTL_SEC = 60.0
 _SOCKET_TIMEOUT = 0.25
 _MAX_WORKERS = 64
@@ -71,6 +71,8 @@ _BRAND_RTSP_MAP = {
     "foscam":    "/videoMain",
     "uniview":   "/unicast/c1/s0/live",
     "pelco":     "/stream1",
+    "cp plus":   "/cam/realmonitor?channel=1&subtype=0",
+    "cpplus":    "/cam/realmonitor?channel=1&subtype=0",
 }
 
 
@@ -155,28 +157,39 @@ def _is_private_ipv4(ip: str) -> bool:
 def _get_local_private_ipv4s() -> list[str]:
     addresses: set[str] = set()
 
+    # Strategy 1: Psutil (Best for all interfaces)
     try:
-        host_info = socket.gethostbyname_ex(socket.gethostname())
-        for ip in host_info[2]:
-            if _is_private_ipv4(ip):
-                addresses.add(ip)
-    except socket.gaierror as exc:
-        log.warning("Hostname lookup failed for camera scan: %s", exc)
+        import psutil
+        for interface, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    ip = addr.address
+                    if _is_private_ipv4(ip) and ip != "127.0.0.1":
+                        addresses.add(ip)
+    except ImportError:
+        # Fallback to strategy 2
+        try:
+            host_info = socket.gethostbyname_ex(socket.gethostname())
+            for ip in host_info[2]:
+                if _is_private_ipv4(ip):
+                    addresses.add(ip)
+        except Exception: pass
 
-    # UDP connect does not require internet, but gives active outbound interface IP.
-    udp_targets = [("8.8.8.8", 80), ("1.1.1.1", 80)]
+    # Strategy 3: UDP connect (Good for active outbound)
+    udp_targets = [("8.8.8.8", 80), ("1.1.1.1", 80), ("192.168.1.1", 80)]
     for host, port in udp_targets:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.connect((host, port))
             ip = sock.getsockname()[0]
-            if _is_private_ipv4(ip):
+            if _is_private_ipv4(ip) and ip != "127.0.0.1":
                 addresses.add(ip)
         except OSError:
             continue
         finally:
             sock.close()
 
+    log.info("Discovery: Scanning subnets for IPs: %s", list(addresses))
     return sorted(addresses)
 
 

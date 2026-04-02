@@ -71,6 +71,20 @@ function renderCameraList(cams) {
         `;
     }).join('');
     lucide.createIcons();
+
+    // Sync detection filter dropdown
+    const filter = document.getElementById('detection-filter');
+    if (filter) {
+        const current = filter.value;
+        filter.innerHTML = '<option value="all">All Cameras</option>';
+        cams.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.name;
+            opt.textContent = c.name;
+            filter.appendChild(opt);
+        });
+        filter.value = current || 'all';
+    }
 }
 
 function renderCameraGrid(cams) {
@@ -142,6 +156,8 @@ function renderCameraGrid(cams) {
 async function selectCamera(id, name, force = false) {
     if (activeCamId === id && !force) {
         showFocused();
+        // If clicking already active cam, trigger force reload
+        selectCamera(id, name, true);
         return;
     }
 
@@ -157,8 +173,8 @@ async function selectCamera(id, name, force = false) {
     const badge = document.getElementById('live-badge');
     const stopBtn = document.getElementById('stop-btn');
 
-    if (ph) ph.style.display = 'flex';
-    if (img) img.style.display = 'none';
+    // Senior Fix: Only show placeholder if no image is currently set to avoid flicker
+    if (ph && (!img || !img.src || img.style.display === 'none')) ph.style.display = 'flex';
     if (label) { label.innerText = name; label.style.display = 'block'; }
 
     try {
@@ -168,18 +184,22 @@ async function selectCamera(id, name, force = false) {
             body: JSON.stringify({ id }),
         });
 
-        setTimeout(() => {
-            if (img) {
-                const newSrc = '/video_feed?cam=' + encodeURIComponent(id) + '&t=' + Date.now();
-                if (img.src !== newSrc) {
-                    img.src = newSrc;
-                    img.style.display = 'block';
-                }
+        if (img) {
+            const currentSrc = img.src || "";
+            // If forced (manual click on active camera), always re-assign with timestamp
+            if (force) {
+                img.src = '/video_feed?t=' + Date.now();
+                img.style.display = 'block';
             }
-            if (ph) ph.style.display = 'none';
-            if (badge) badge.style.display = 'flex';
-            if (stopBtn) stopBtn.disabled = false;
-        }, 100);
+            // Otherwise, only set if not already connected (enables zero-flicker switching)
+            else if (!currentSrc.includes('/video_feed')) {
+                img.src = '/video_feed';
+                img.style.display = 'block';
+            }
+        }
+        if (ph) ph.style.display = 'none';
+        if (badge) badge.style.display = 'flex';
+        if (stopBtn) stopBtn.disabled = false;
 
         startStats();
     } catch (e) {
@@ -222,9 +242,14 @@ function showCameraOptions(id, name, event) {
     if (!cam) return;
     
     const roles = cam.roles || [];
-    document.querySelectorAll('#roles-form input').forEach(input => {
+    const gateId = cam.gate_id || "";
+    
+    document.querySelectorAll('#roles-form input[type="checkbox"]').forEach(input => {
         input.checked = roles.includes(input.value);
     });
+    
+    const gateInput = document.getElementById('modal-gate-id');
+    if (gateInput) gateInput.value = gateId;
     
     modal.style.display = 'flex';
 }
@@ -238,10 +263,13 @@ function closeRolesModal() {
 async function saveRoles() {
     if (!selectedCamForRoles) return;
     
-    const checkboxes = document.querySelectorAll('#roles-form input');
+    const checkboxes = document.querySelectorAll('#roles-form input[type="checkbox"]');
     const roles = Array.from(checkboxes)
         .filter(i => i.checked)
         .map(i => i.value);
+    
+    const gateInput = document.getElementById('modal-gate-id');
+    const gateId = gateInput ? gateInput.value : "";
     
     const btn = document.querySelector('.saas-modal-footer .btn-primary');
     const original = btn.innerText;
@@ -252,7 +280,7 @@ async function saveRoles() {
         const res = await fetch(`/api/cameras/${selectedCamForRoles}/roles`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roles })
+            body: JSON.stringify({ roles, gate_id: gateId })
         });
         const data = await res.json();
         if (data.success) {
@@ -261,7 +289,10 @@ async function saveRoles() {
             
             // Update local state
             const cam = allCameras.find(c => String(c.id) == String(selectedCamForRoles));
-            if (cam) cam.roles = roles;
+            if (cam) {
+                cam.roles = roles;
+                cam.gate_id = gateId;
+            }
             
             // Refresh list to show new roles
             renderCameraList(allCameras);
@@ -311,26 +342,60 @@ function updateStatsUI(d) {
     const elExits = document.getElementById('stat-exits');
     const elFps = document.getElementById('stat-fps');
     const elMotion = document.getElementById('stat-motion');
-    const container = document.getElementById('person-cards');
 
-    if (elPersons) elPersons.innerText = d.persons;
-    if (elEntries) elEntries.innerText = d.entries || 0;
-    if (elExits) elExits.innerText = d.exits || 0;
+
+    if (elPersons) elPersons.innerText = d.paused ? 'PAUSED' : d.persons;
+    if (elPersons) elPersons.style.color = d.paused ? 'var(--error)' : '';
+    
+    if (elEntries) elEntries.innerText = d.paused ? '—' : (d.entries || 0);
+    if (elExits) elExits.innerText = d.paused ? '—' : (d.exits || 0);
     if (elFps) elFps.innerText = d.fps + ' FPS';
+    
     if (elMotion) {
-        elMotion.innerText = d.motion ? 'YES' : 'NO';
-        elMotion.style.color = d.motion ? 'var(--success)' : 'var(--error)';
+        if (d.paused) {
+            elMotion.innerText = 'PAUSED';
+            elMotion.style.color = 'var(--error)';
+        } else {
+            elMotion.innerText = d.motion ? 'YES' : 'NO';
+            elMotion.style.color = d.motion ? 'var(--success)' : 'var(--error)';
+        }
     }
 
-    if (container) {
-        if (!d.tracks || d.tracks.length === 0) {
-            container.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-tertiary);">No active detections</div>';
-            return;
-        }
+    // Senior Fix: Target all person-cards containers (Dashboard + Live views)
+    const containers = document.querySelectorAll('#person-cards');
+    if (containers.length === 0) return;
 
-        container.innerHTML = d.tracks.map(t => {
+    const filterEl = document.getElementById('detection-filter');
+    const filterVal = filterEl ? filterEl.value : 'all';
+    
+    let allTracks = [];
+    if (filterVal === 'all') {
+        // Aggregate tracks from ALL cameras
+        if (d.all_results) {
+            Object.entries(d.all_results).forEach(([camName, res]) => {
+                res.tracks.forEach(t => {
+                    allTracks.push({ ...t, camera: camName });
+                });
+            });
+        } else {
+            allTracks = d.tracks || [];
+        }
+    } else {
+        // Show only the selected camera
+        if (d.all_results && d.all_results[filterVal]) {
+            allTracks = d.all_results[filterVal].tracks.map(t => ({ ...t, camera: filterVal }));
+        } else if (filterVal === d.camera) {
+            allTracks = d.tracks || [];
+        }
+    }
+
+    const html = allTracks.length === 0 
+        ? '<div style="padding: 20px; text-align: center; color: var(--text-tertiary);">No active detections</div>'
+        : allTracks.map(t => {
             const isAlert = t.action && (t.action.includes('▲') || t.action.includes('RUN'));
-            const identity = (t.identity && t.identity !== "Unknown") ? t.identity : "Subject #" + t.id;
+            // Use Staff ID (Display ID) if available for better identification
+            const identity = (t.staff_id && t.staff_id !== "") ? t.staff_id : ((t.identity && t.identity !== "Unknown") ? t.identity : "Subject #" + t.id);
+            const camLabel = filterVal === 'all' ? `<div style="font-size: 9px; color: var(--accent); margin-top: 4px; opacity: 0.8;">via ${t.camera || 'Active'}</div>` : '';
             
             return `
                 <div class="saas-card" style="padding: 12px; margin-bottom: 8px; border-left: 3px solid ${isAlert ? 'var(--error)' : 'var(--accent)'}; transition: none !important;">
@@ -342,10 +407,12 @@ function updateStatsUI(d) {
                         ${t.emotion ? `<span class="status-badge status-success" style="font-size: 10px; padding: 1px 6px;">${t.emotion}</span>` : ''}
                         ${t.action ? `<span class="status-badge ${isAlert ? 'status-error' : 'status-warning'}" style="font-size: 10px; padding: 1px 6px;">${t.action}</span>` : ''}
                     </div>
+                    ${camLabel}
                 </div>
             `;
         }).join('');
-    }
+
+    containers.forEach(c => { c.innerHTML = html; });
 }
 
 function resetStats() {
