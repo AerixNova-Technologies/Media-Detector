@@ -580,11 +580,11 @@ class AIPipeline(threading.Thread):
                                 movement_id=td.get("movement_id"),
                                 image_path=f"static/uploads/movement/{sync_crop_filename}" if td.get("best_frame") is not None else None,
                                 confidence=td["best_clarity"],
-                                category=rec.get("category")
+                                category=cached.get("category")
                             )
                             td["last_synced_id"] = new_id
                             td["last_synced_clarity"] = td["best_clarity"]
-                            td["category"] = rec.get("category")
+                            td["category"] = cached.get("category")
 
                             # PARALLEL TELEGRAM: Notify when officially recognized
                             self._rec_executor.submit(self.notifier.notify_person, tid, cam_name, identity=new_id, action=td.get("action", ""), image_path=td.get("entry_image_path"))

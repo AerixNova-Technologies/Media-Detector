@@ -85,7 +85,8 @@ def log_person(
     entry_time: datetime | None = None,
     exit_time: datetime | None = None,
     roles: list[str] | None = None,
-    gate_id: str | None = None
+    gate_id: str | None = None,
+    **kwargs
 ):
     """Store human detections (staff/unknown) in member_timestamp."""
     detected_at = detected_at or datetime.now()
@@ -344,6 +345,36 @@ def update_exit_logs(member_id: int, movement_id: int, exit_image: str, merged_i
                     exit_camera_id = %s, exit_camera_name = %s
                 WHERE id = %s
             """, (exit_image, merged_image, exit_camera_id, exit_camera_name, movement_id))
+
+        # 3. Synchronize with Attendance Table (Fix for "Exit time is not count")
+        if member_id:
+            # We need the staff_id for this member_timestamp record to update the attendance
+            cur.execute("SELECT staff_id, attendance_date, entry_time FROM member_timestamp WHERE id = %s", (member_id,))
+            m_row = cur.fetchone()
+            if m_row and m_row['staff_id']:
+                s_id = m_row['staff_id']
+                a_date = m_row['attendance_date'] or datetime.now().date()
+                e_time = m_row['entry_time']
+                
+                # Update attendance record for TODAY
+                cur.execute("""
+                    UPDATE attendance
+                    SET last_exit_time = NOW(),
+                        out_time = NOW(),
+                        status = 'OUT',
+                        movement_count = COALESCE(movement_count, 0) + 1,
+                        out_camera_name = %s,
+                        out_image = COALESCE(%s, out_image),
+                        total_duration_minutes = CASE 
+                            WHEN first_entry_time IS NOT NULL THEN 
+                                EXTRACT(EPOCH FROM (NOW() - first_entry_time))/60
+                            ELSE total_duration_minutes
+                        END
+                    WHERE staff_id = %s AND attendance_date = %s
+                """, (exit_camera_name, exit_image, s_id, a_date))
+                
+                log.info(f"DB: Synchronized Attendance EXIT for Staff {s_id} (Date: {a_date})")
+
         conn.commit()
     except Exception as e:
         log.error(f"Failed to update exit logs: {e}")
@@ -415,12 +446,17 @@ def track_staff_attendance(
                         in_image = %s,
                         out_image = %s,
                         camera_name = COALESCE(camera_name, %s),
-                        out_camera_name = %s
+                        out_camera_name = %s,
+                        total_duration_minutes = CASE 
+                            WHEN first_entry_time IS NOT NULL THEN 
+                                EXTRACT(EPOCH FROM (%s - first_entry_time))/60
+                            ELSE total_duration_minutes
+                        END
                     WHERE staff_id = %s AND attendance_date = %s
                 """, (
                     detected_at, detected_at, status_to_set, detected_at, staff_name, 
                     entry_image, entry_image, entry_image, camera_name, camera_name,
-                    staff_id, today
+                    detected_at, staff_id, today
                 ))
         except Exception as schema_exc:
             # Fallback for deployments where attendance schema is older/incomplete.

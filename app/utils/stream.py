@@ -99,7 +99,7 @@ class VideoStream:
             # Increase stimeout to 5s for older cameras (was 3s)
             # Use user-defined transport (TCP/UDP)
             trans = self.transport if self.transport in ["tcp", "udp"] else "tcp"
-            options = f"rtsp_transport;{trans}|fflags;nobuffer|probesize;32|analyzeduration;0|stimeout;5000000|rtsp_flags;prefer_tcp"
+            options = f"rtsp_transport;{trans}|fflags;nobuffer|probesize;32|analyzeduration;0|stimeout;10000000|rtsp_flags;prefer_tcp"
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = options
             
             try:
@@ -167,7 +167,7 @@ class VideoStream:
                     log.warning(f"VideoStream: High-frequency noise detected (StdDev: {std:.1f}). Possible driver crash.")
                 
                 # 2. Black Screen / Frozen Buffer (EXTREMELY Low Variance)
-                elif std < 2.0:
+                elif std < 0.5:
                     is_bad = True
                     log.warning(f"VideoStream: Black screen / Dead stream detected (StdDev: {std:.1f}). Possible driver stall.")
             
@@ -205,7 +205,7 @@ class VideoStream:
 
             # PROFESSIONAL SURVEILLANCE FLAGS (REFINED FOR OLDER FIRMWARE)
             trans = self.transport if self.transport in ["tcp", "udp"] else "tcp"
-            options = f"rtsp_transport;{trans}|fflags;nobuffer|probesize;32|analyzeduration;0|stimeout;5000000|rtsp_flags;prefer_tcp"
+            options = f"rtsp_transport;{trans}|fflags;nobuffer|probesize;32|analyzeduration;0|stimeout;10000000|rtsp_flags;prefer_tcp"
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = options
             try:
                 self._cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
