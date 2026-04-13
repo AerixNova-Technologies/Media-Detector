@@ -7,9 +7,9 @@ def test_connection():
     print("This version uses the RAW password. Special characters (like # or @) will likely FAIL.\n")
     
     # --- DEFAULT VALUES ---
-    default_ip = "192.168.1.240"
-    default_user = "testt"
-    default_pass = "Admin123#"
+    default_ip = "192.168.1.36"
+    default_user = "admin"
+    default_pass = "Admin@123"
     default_port = "554"
     default_path = "/cam/realmonitor?channel=1&subtype=0"
     # ----------------------
